@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import numpy as np
 import pandas as pd
+from ..._dataframe import set_columns, to_pandas
 
 
 def local_interactions(explainer,
@@ -16,6 +17,7 @@ def local_interactions(explainer,
 
     # set target
     target_yhat = explainer.predict(new_observation)
+    new_observation = to_pandas(new_observation)
     baseline_yhat = np.mean(explainer.predict(explainer.data))
 
     # 1d changes
@@ -98,10 +100,10 @@ def local_interactions(explainer,
 
 def calculate_1d_changes(explainer,
                          new_observation):
-    yhats = np.empty_like(explainer.data.columns)
+    yhats = np.empty(len(explainer.data.columns), dtype=object)
     for i, col in enumerate(explainer.data.columns):
         current_data = deepcopy(explainer.data)
-        current_data.loc[:, col] = new_observation.loc[:, col].iloc[0]
+        current_data = set_columns(current_data, {col: new_observation.loc[:, col].iloc[0]})
         yhats[i] = explainer.predict(current_data).mean()
 
     return pd.Series(yhats, index=explainer.data.columns)
@@ -116,14 +118,16 @@ def calculate_2d_changes(explainer,
 
     for i in range(inds.shape[0]):
         current_data = deepcopy(explainer.data)
-        current_data.iloc[:, inds.iloc[i, 0]] = new_observation.iloc[0, inds.iloc[i, 0]]
-        current_data.iloc[:, inds.iloc[i, 1]] = new_observation.iloc[0, inds.iloc[i, 1]]
+        current_data = set_columns(current_data, {
+            explainer.data.columns[int(inds.iloc[i, j])]: new_observation.iloc[0, int(inds.iloc[i, j])]
+            for j in (0, 1)
+        })
 
         yhats = explainer.predict(current_data)
         average_yhats[i] = yhats.mean()
         average_yhats_norm[i] = average_yhats[i] - diffs_1d.iloc[inds.iloc[i, 0]] - diffs_1d.iloc[inds.iloc[i, 1]]
 
-    columns = explainer.data.columns
+    columns = np.asarray(explainer.data.columns)
     average_yhats = pd.Series(average_yhats)
     average_yhats_norm = pd.Series(average_yhats_norm)
     average_yhats.index = [':'.join(pair) for pair in zip(columns[inds.iloc[:, 0]], columns[inds.iloc[:, 1]])]
@@ -180,7 +184,7 @@ def calculate_contributions_along_path(explainer,
         if open_variables.issuperset(candidates):
             # we can add this effect to out path
             for candidate in candidates:
-                current_data.iloc[:, candidate] = new_observation.iloc[0, candidate]
+                current_data = set_columns(current_data, {explainer.data.columns[candidate]: new_observation.iloc[0, candidate]})
 
             step += 1
 
@@ -189,8 +193,8 @@ def calculate_contributions_along_path(explainer,
             if keep_distributions:
                 yhats.append(
                     pd.DataFrame({
-                        'variable_name': ':'.join(explainer.data.columns[candidates]),
-                        'variable': ':'.join(explainer.data.columns[candidates]) +
+                        'variable_name': ':'.join(np.asarray(explainer.data.columns)[candidates]),
+                        'variable': ':'.join(np.asarray(explainer.data.columns)[candidates]) +
                                     '=' +
                                     nice_pair(new_observation,
                                               candidates[0],

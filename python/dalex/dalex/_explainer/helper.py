@@ -2,6 +2,8 @@
 import re
 import numpy as np
 
+from .._dataframe import to_numpy
+
 
 def verbose_cat(text, verbose):
     if verbose:
@@ -9,7 +11,7 @@ def verbose_cat(text, verbose):
 
 
 def is_y_in_data(data, y):
-    return (np.apply_along_axis(lambda x, y: (x == y).all(), 0, data, y)).any()
+    return (np.apply_along_axis(lambda x, y: (x == y).all(), 0, to_numpy(data), y)).any()
 
 
 def get_model_info(model):

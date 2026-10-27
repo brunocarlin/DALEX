@@ -2,6 +2,7 @@ import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
+from ..._dataframe import as_eager_dataframe, column_values, set_columns, take_rows, to_pandas
 from tqdm import tqdm
 
 
@@ -31,6 +32,7 @@ def calculate_ceteris_paribus(explainer,
     # add points of interests
     predictions = explainer.predict(new_observation)
 
+    new_observation = to_pandas(new_observation)
     new_observation.loc[:, '_yhat_'] = predictions
 
     new_observation.loc[:, '_label_'] = explainer.label
@@ -93,6 +95,16 @@ def single_variable_profile(predict,
     :param split_points: dataset is split over these points
     :return: ceteris paribus profile for one variable
     """
+    if not isinstance(data, pd.DataFrame):
+        positions = np.repeat(np.arange(data.shape[0]), len(split_points))
+        expanded = take_rows(data, positions)
+        original = column_values(expanded, variable)
+        native = set_columns(expanded, {variable: np.tile(split_points, data.shape[0])})
+        yhat = predict(model, native)
+        result = to_pandas(native)
+        result.index = positions
+        return result.assign(_original_=original, _yhat_=yhat, _vname_=variable, _ids_=positions)
+
     # remember ids of selected points
     ids = np.repeat(data.index.values, split_points.shape[0])
     new_data = data.loc[ids, :]
@@ -136,7 +148,8 @@ def calculate_variable_split(data,
     probs = np.linspace(0, 1, grid_points)
 
     for variable in variables:
-        variable_column = data.loc[:, variable]
+        variable_column = (data.loc[:, variable] if isinstance(data, pd.DataFrame)
+                           else column_values(data, variable))
         if pd.api.types.is_numeric_dtype(variable_column):
             if variable_splits_type == 'uniform':
                 column_splits = np.linspace(np.min(variable_column),
@@ -145,12 +158,12 @@ def calculate_variable_split(data,
             else:
                 column_splits = np.unique(np.quantile(variable_column, probs))
             if variable_splits_with_obs:
-                column_splits = np.concatenate((column_splits, new_observation.loc[:, variable]))
+                column_splits = np.concatenate((column_splits, column_values(new_observation, variable)))
                 column_splits = np.unique(column_splits)
                 column_splits = np.sort(column_splits, kind='mergesort')
 
             variable_splits[variable] = column_splits
         else:
-            variable_splits[variable] = variable_column.unique()
+            variable_splits[variable] = pd.unique(variable_column)
 
     return variable_splits

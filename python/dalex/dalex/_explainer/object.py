@@ -1,3 +1,4 @@
+from .._dataframe import require_pandas
 import numpy as np
 
 from dalex.model_explanations import ModelPerformance, VariableImportance, \
@@ -10,6 +11,7 @@ from . import checks
 from . import utils
 from . import helper
 from .. import _global_checks
+from .._dataframe import take_rows
 
 
 class Explainer:
@@ -27,7 +29,7 @@ class Explainer:
     ----------
     model : object
         Model to be explained.
-    data : pd.DataFrame or np.ndarray (2d)
+    data : pd.DataFrame, eager Polars DataFrame or np.ndarray (2d)
         Data which will be used to calculate the explanations. It shouldn't contain
         the target column (See `y`).
         NOTE: If target variable is present in the data, some of the functionalities may
@@ -37,7 +39,7 @@ class Explainer:
     predict_function : function, optional
         Function that takes two parameters (model, data) and returns a np.ndarray (1d)
         with model predictions (default is predict method extracted from the model).
-        NOTE: This function needs to work with `data` as pd.DataFrame.
+        NOTE: This function must accept the native backend of `data`.
     residual_function : function, optional
         Function that takes three parameters (model, data, y) and returns a np.ndarray (1d)
         with model residuals (default is a function constructed from `predict_function`).
@@ -292,9 +294,9 @@ class Explainer:
                 np.random.seed(random_state)
             N = min(N, self.data.shape[0])
             I = np.random.choice(np.arange(self.data.shape[0]), N, replace=False)
-            from copy import deepcopy
-            _data = deepcopy(self.data)
-            self.data = self.data.iloc[I, :]
+            from copy import copy
+            self = copy(self)
+            self.data = take_rows(self.data, I)
 
         if _type == 'break_down_interactions' or _type == 'break_down':
             _predict_parts = BreakDown(
@@ -321,9 +323,6 @@ class Explainer:
         
         if label:
             _predict_parts.result['label'] = label
-
-        if isinstance(N, int):
-            self.data = _data
 
         return _predict_parts
 
@@ -439,6 +438,7 @@ class Explainer:
         -----------
         - https://github.com/marcotcr/lime
         """
+        require_pandas(self.data, "_explainer.predict_surrogate")
 
         checks.check_data_again(self.data)
 
@@ -597,7 +597,7 @@ class Explainer:
                     np.random.seed(random_state)
                 N = min(N, self.data.shape[0])
                 I = np.random.choice(np.arange(self.data.shape[0]), N, replace=False)
-                _new_observation = self.data.iloc[I, :]
+                _new_observation = take_rows(self.data, I)
             else:
                 _new_observation = self.data
 
@@ -699,7 +699,7 @@ class Explainer:
             N = min(N, self.data.shape[0])
             I = np.random.choice(np.arange(self.data.shape[0]), N, replace=False)
             _y = self.y[I] if self.y is not None else self.y
-            _new_observation = self.data.iloc[I, :]
+            _new_observation = take_rows(self.data, I)
         else:
             _y = self.y
             _new_observation = self.data
@@ -804,6 +804,7 @@ class Explainer:
         - https://christophm.github.io/interpretable-ml-book/global.html
         - https://github.com/scikit-learn/scikit-learn
         """
+        require_pandas(self.data, "_explainer.model_surrogate")
 
         _global_checks.global_check_import('scikit-learn', 'surrogate models')
         checks.check_data_again(self.data)

@@ -1,3 +1,4 @@
+from .._dataframe import require_pandas
 import threading
 import time
 import numpy as np
@@ -173,6 +174,7 @@ class Arena:
             Overrides constructor `precalculate` parameter when it is not None.
             If true, then only plots using this model will be precalculated.
         """
+        require_pandas(explainer.data, "arena.push_model")
         if not isinstance(explainer, Explainer):
             raise Exception('Invalid Explainer argument')
         if explainer.label in self.list_params('model'):

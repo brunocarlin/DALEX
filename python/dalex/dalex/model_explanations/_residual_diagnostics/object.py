@@ -5,6 +5,7 @@ import plotly.express as px
 from . import checks
 from ... import _theme, _global_checks, _global_utils
 from ..._explanation import Explanation
+from ..._dataframe import to_pandas
 
 
 class ResidualDiagnostics(Explanation):
@@ -52,7 +53,7 @@ class ResidualDiagnostics(Explanation):
         -----------
         None
         """
-        result = explainer.data.copy()
+        result = to_pandas(explainer.data)
 
         # if variables = NULL then all variables are added
         # otherwise only selected

@@ -69,11 +69,11 @@ def run_setup():
             "Topic :: Scientific/Engineering",
             "Topic :: Scientific/Engineering :: Artificial Intelligence",
             "Programming Language :: Python :: 3",
-            "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
+            "Programming Language :: Python :: 3.14",
             "License :: OSI Approved",
             "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
             "Operating System :: OS Independent",
@@ -81,7 +81,8 @@ def run_setup():
         install_requires=[
             'setuptools',
             'packaging',
-            'pandas>=1.5.3,<3.0.0',
+            'pandas>=1.5.3,<3.0.0',  # legacy result/plotting paths
+            'narwhals>=2.0,<3.0',
             'numpy>=1.23.5',
             'scipy>=1.6.3',
             'plotly>=6.0.0',
@@ -89,7 +90,7 @@ def run_setup():
         ],
         extras_require={'full': full_dependencies},
         packages=find_packages(include=["dalex", "dalex.*"]),
-        python_requires='>=3.9',
+        python_requires='>=3.10',
         include_package_data=True
     )
 

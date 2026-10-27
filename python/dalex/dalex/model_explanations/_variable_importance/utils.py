@@ -6,6 +6,8 @@ from numpy.random import SeedSequence, default_rng
 import numpy as np
 import pandas as pd
 
+from ..._dataframe import take_rows, shuffle_columns
+
 
 def calculate_variable_importance(explainer,
                                   type,
@@ -55,7 +57,7 @@ def loss_after_permutation(data, y, weights, model, predict, loss_function, vari
     if isinstance(N, int):
         N = min(N, data.shape[0])
         sampled_rows = rng.choice(np.arange(data.shape[0]), N, replace=False)
-        sampled_data = data.iloc[sampled_rows, :]
+        sampled_data = take_rows(data, sampled_rows)
         observed = y[sampled_rows]
         sample_weight = weights[sampled_rows] if weights is not None else None
     else:
@@ -72,11 +74,8 @@ def loss_after_permutation(data, y, weights, model, predict, loss_function, vari
 
     loss_features = {}
     for variables_set_key in variables:
-        ndf = sampled_data.copy()
-        ndf.loc[:, variables[variables_set_key]] = ndf.iloc[
-                                                   rng.choice(range(ndf.shape[0]), ndf.shape[0], False), :].loc[:,
-                                                   variables[variables_set_key]].values
-
+        shuffled_rows = rng.choice(range(sampled_data.shape[0]), sampled_data.shape[0], False)
+        ndf = shuffle_columns(sampled_data, variables[variables_set_key], shuffled_rows)
         predicted = predict(model, ndf)
 
         loss_features[variables_set_key] = calculate_loss(loss_function, observed, predicted, sample_weight)

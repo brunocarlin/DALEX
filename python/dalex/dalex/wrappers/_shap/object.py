@@ -1,3 +1,4 @@
+from ..._dataframe import require_pandas
 import numpy as np
 from . import checks
 from ..._explanation import Explanation
@@ -66,6 +67,7 @@ class ShapWrapper(Explanation):
         -----------
         None
         """
+        require_pandas(explainer.data, "wrappers.fit")
         from shap import TreeExplainer, DeepExplainer, GradientExplainer, LinearExplainer, KernelExplainer
 
         checks.check_compatibility(explainer)

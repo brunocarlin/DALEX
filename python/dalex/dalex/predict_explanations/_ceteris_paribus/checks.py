@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import numpy as np
 import pandas as pd
+from ..._dataframe import native_observation
 
 from . import utils
 
@@ -26,6 +27,8 @@ def check_variables(variables, explainer, variable_splits):
 
 
 def check_new_observation(new_observation, explainer):
+    if not isinstance(explainer.data, pd.DataFrame):
+        return native_observation(new_observation, explainer.data, single=False)
     new_observation_ = deepcopy(new_observation)
     if isinstance(new_observation_, pd.Series):
         new_observation_ = new_observation_.to_frame().T

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from .._dataframe import to_pandas
 import warnings
 
 from . import checks
@@ -53,6 +54,8 @@ def calculate_cat_num_assoc_matrix(data, categorical_variables, numerical_variab
 
 
 def calculate_assoc_matrix(data, corr_method):
+    # Statistical correlation/contingency boundary. Prediction batches stay native.
+    data = to_pandas(data)
     corr_matrix = abs(data.corr(corr_method, numeric_only=True)) # get submatrix for only numerical variables
     numerical_variables = corr_matrix.columns 
     categorical_variables = list(set(data.columns) - set(numerical_variables))
@@ -68,9 +71,13 @@ def calculate_assoc_matrix(data, corr_method):
 
 
 def calculate_pps_matrix(data, agg_method):
-    _global_checks.global_check_import('ppscore', 'depend_matrix with PPS calculation')
-    import ppscore as pps
-    pps_result = pps.matrix(data, sample=None)
+    # PPS is an optional pandas-only statistics library, deliberately excluded
+    # from the full extra because its dependency bounds can conflict with pandas 2.
+    try:
+        import ppscore as pps
+    except ImportError as exc:
+        raise ImportError("Install optional 'ppscore' for PPS dependence matrices") from exc
+    pps_result = pps.matrix(to_pandas(data), sample=None)
     pps_matrix = pps_result[["x", "y", "ppscore"]].pivot(
         columns="x", index="y", values="ppscore"
     )

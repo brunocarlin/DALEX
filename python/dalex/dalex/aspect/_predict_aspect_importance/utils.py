@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from ..._dataframe import take_rows, set_columns, column_values, to_pandas
 from copy import deepcopy
 import multiprocessing as mp
 
@@ -21,16 +22,17 @@ def calculate_predict_aspect_importance(
     r = np.random.RandomState(random_state)
     N = min(explainer.data.shape[0], N)
     ids = r.randint(0, explainer.data.shape[0], N)
-    n_sample = explainer.data.iloc[ids, :].copy()
+    n_sample = take_rows(explainer.data, ids)
     n_sample_changed = deepcopy(n_sample)
-    n_sample_changed.reset_index(inplace=True, drop=True)
+    if isinstance(n_sample_changed, pd.DataFrame):
+        n_sample_changed.reset_index(inplace=True, drop=True)
 
     if len(variable_groups) == 1:
         result = pd.DataFrame(
             {
                 "aspect_name": list(variable_groups.keys())[0],
                 "variable_names": [list(variable_groups.values())[0]],
-                "variable_values": new_observation[list(variable_groups.values())[0]].values.tolist(),
+                "variable_values": to_pandas(new_observation)[list(variable_groups.values())[0]].values.tolist(),
                 "importance": explainer.predict(new_observation) - explainer.y_hat.mean(),
                 "label": explainer.label,
             }
@@ -40,14 +42,15 @@ def calculate_predict_aspect_importance(
     # generate binary matrix for replacing aspect
     X_prim = get_sample(N, len(variable_groups), sample_method, f, random_state)
 
-    # replace aspect in sample with observation's values of features
-    for i in range(n_sample_changed.shape[0]):
-        for k, variables_set_key in enumerate(variable_groups):
-            if X_prim[i, k] == 1:
-                variables = variable_groups[variables_set_key]
-                n_sample_changed.loc[i, variables] = [
-                    new_observation.iloc[0][var] for var in variables
-                ]
+    # Replace whole masked columns rather than editing individual dataframe rows.
+    new_observation = to_pandas(new_observation)
+    replacements = {}
+    for k, variables_set_key in enumerate(variable_groups):
+        mask = X_prim[:, k] == 1
+        for variable in variable_groups[variables_set_key]:
+            values = replacements.get(variable, column_values(n_sample_changed, variable))
+            replacements[variable] = np.where(mask, new_observation.iloc[0][variable], values)
+    n_sample_changed = set_columns(n_sample_changed, replacements)
 
     # calculate change in predictions
     y_changed = explainer.predict(n_sample_changed) - explainer.predict(n_sample)
@@ -98,10 +101,11 @@ def calculate_shap_predict_aspect_importance(
          processes,
          random_state
 ):
+    new_observation = to_pandas(new_observation)
     r = np.random.RandomState(random_state)
     N = min(explainer.data.shape[0], N)
     ids = r.randint(0, explainer.data.shape[0], N)
-    data_sample = explainer.data.iloc[ids, :].copy()
+    data_sample = take_rows(explainer.data, ids)
     p = len(variable_groups)
 
     if processes == 1:
@@ -170,7 +174,8 @@ def iterate_paths(predict_function, data_sample, new_observation, variable_group
 
 def get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b):
     current_data = deepcopy(data_sample)
-    current_data.reset_index(inplace=True, drop=True)
+    if isinstance(current_data, pd.DataFrame):
+        current_data.reset_index(inplace=True, drop=True)
     variable_groups_varnames = list(variable_groups.values())
     variable_groups_aspnames = list(variable_groups.keys())
     yhats = np.empty(len(random_path) + 1)
@@ -178,7 +183,7 @@ def get_single_random_path(predict_function, data_sample, new_observation, varia
     for i, candidate in enumerate(random_path):
         variables = variable_groups_varnames[candidate]
         for var in variables:
-            current_data.loc[:, var] = new_observation.iloc[0][var]
+            current_data = set_columns(current_data, {var: new_observation.iloc[0][var]})
         yhats[i + 1] = predict_function(current_data).mean()
 
     diffs = np.diff(yhats)

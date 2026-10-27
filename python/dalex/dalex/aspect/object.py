@@ -1,4 +1,3 @@
-from .._dataframe import require_pandas
 import numpy as np
 import pandas as pd
 
@@ -81,7 +80,6 @@ class Aspect:
         corr_method="spearman",
         agg_method="max",
     ):  
-        require_pandas(explainer.data, "aspect.__init__")
         _depend_method, _corr_method, _agg_method = checks.check_method_depend(depend_method, corr_method, agg_method)
         self.explainer = explainer
         self.depend_method = _depend_method

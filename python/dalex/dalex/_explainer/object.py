@@ -1,4 +1,3 @@
-from .._dataframe import require_pandas
 import numpy as np
 import pandas as pd
 
@@ -441,12 +440,14 @@ class Explainer:
         -----------
         - https://github.com/marcotcr/lime
         """
-        require_pandas(self.data, "_explainer.predict_surrogate")
 
         checks.check_data_again(self.data)
 
         if type == 'lime':
             _global_checks.global_check_import('lime', 'LIME explanations')
+            if not isinstance(new_observation, (pd.DataFrame, pd.Series, np.ndarray, list)):
+                from .._dataframe import to_numpy
+                new_observation = to_numpy(new_observation)
             _new_observation = checks.check_new_observation_lime(new_observation)
             _explanation = utils.create_lime_explanation(self, _new_observation, **kwargs)
         else:
@@ -807,7 +808,6 @@ class Explainer:
         - https://christophm.github.io/interpretable-ml-book/global.html
         - https://github.com/scikit-learn/scikit-learn
         """
-        require_pandas(self.data, "_explainer.model_surrogate")
 
         _global_checks.global_check_import('scikit-learn', 'surrogate models')
         checks.check_data_again(self.data)

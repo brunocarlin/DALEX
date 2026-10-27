@@ -118,3 +118,17 @@ def test_legacy_pandas_integer_column_names():
     explainer = dx.Explainer(Model(), data, np.arange(3.), verbose=False)
     result = explainer.model_parts(B=2, N=None, random_state=42)
     assert set(result.result.variable) == {0, 1, "_baseline_", "_full_model_"}
+
+@pytest.mark.parametrize('backend',['pandas','polars'])
+def test_masked_replacement_preserves_categorical_schema(backend):
+    from dalex._dataframe import set_columns
+    frame=pd.DataFrame({'category':pd.Categorical(['a','b','a']), 'value':[1.,2.,3.]})
+    data=frame if backend=='pandas' else pl.from_pandas(frame)
+    result=set_columns(data,{'category':np.array(['b','b','a'],dtype=object)})
+    if backend=='pandas':
+        assert result.dtypes.equals(data.dtypes)
+        assert result.category.tolist()==['b','b','a']
+    else:
+        assert result.schema==data.schema
+        assert result['category'].to_list()==['b','b','a']
+    assert nw.from_native(data)['category'].to_list()==['a','b','a']

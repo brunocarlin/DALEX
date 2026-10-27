@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from ..._dataframe import take_rows
 from .._resource import Resource
 
 
@@ -34,7 +35,7 @@ class DatasetShapleyValuesResource(Resource):
         N = self.get_option('N')
         if N < rows:
             sampled_rows = np.random.choice(np.arange(rows), N, replace=False)
-            dataset = dataset.iloc[sampled_rows, :]
+            dataset = take_rows(dataset, sampled_rows)
             rows = N
         buffor = []
         for i in range(rows):
@@ -42,7 +43,7 @@ class DatasetShapleyValuesResource(Resource):
                 if self.cancel_signal:
                     return
             shap = model.explainer.predict_parts(
-                dataset.iloc[i],
+                take_rows(dataset, [i]),
                 type='shap',
                 B=B,
                 processes=cpus

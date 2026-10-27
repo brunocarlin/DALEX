@@ -128,22 +128,6 @@ def test_predict_parts_error_keeps_original_data():
         explainer.predict_parts(pl.DataFrame({"bad": [0.]}), N=1)
     assert explainer.data is data
 
-@pytest.mark.parametrize("family", ["model_surrogate", "predict_surrogate", "shap_wrapper", "aspect", "arena"])
-def test_pending_families_raise_precise_error(family):
-    data = pl.DataFrame({"x": [1., 2., 3.], "z": [3., 2., 1.]})
-    explainer = dx.Explainer(StrictRegressor("polars"), data, np.arange(3.), model_type="regression", verbose=False)
-    with pytest.raises(NotImplementedError, match="currently requires pandas"):
-        if family == "model_surrogate":
-            explainer.model_surrogate()
-        elif family == "predict_surrogate":
-            explainer.predict_surrogate(data.head(1))
-        elif family == "shap_wrapper":
-            explainer.predict_parts(data.head(1), type="shap_wrapper")
-        elif family == "aspect":
-            dx.Aspect(explainer)
-        else:
-            dx.Arena().push_model(explainer)
-
 class StrictClassifier:
     def __init__(self, backend):
         self.backend = backend

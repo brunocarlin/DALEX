@@ -1,4 +1,5 @@
-from ..._dataframe import require_pandas
+from ..._dataframe import to_numpy, to_pandas, native_observation, frame_from_values
+import pandas as pd
 import numpy as np
 from . import checks
 from ..._explanation import Explanation
@@ -67,33 +68,37 @@ class ShapWrapper(Explanation):
         -----------
         None
         """
-        require_pandas(explainer.data, "wrappers.fit")
         from shap import TreeExplainer, DeepExplainer, GradientExplainer, LinearExplainer, KernelExplainer
 
-        checks.check_compatibility(explainer)
         shap_explainer_type = checks.check_shap_explainer_type(shap_explainer_type, explainer.model)
+        # Model-specific SHAP explainers consume the estimator directly. Kernel
+        # SHAP uses the explicit native-frame callback below; neither needs a
+        # predictor that accepts unlabelled NumPy arrays.
 
         if self.type == 'predict_parts':
-            new_observation = checks.check_new_observation_predict_parts(new_observation, explainer)
+            if isinstance(explainer.data, pd.DataFrame):
+                new_observation = checks.check_new_observation_predict_parts(new_observation, explainer)
+            else:
+                new_observation = native_observation(new_observation, explainer.data, single=True)
 
         if shap_explainer_type == "TreeExplainer":
             try:
-                self.shap_explainer = TreeExplainer(explainer.model, explainer.data.values)
+                self.shap_explainer = TreeExplainer(explainer.model, to_numpy(explainer.data))
             except: # https://github.com/ModelOriented/DALEX/issues/371
                 self.shap_explainer = TreeExplainer(explainer.model)
         elif shap_explainer_type == "DeepExplainer":
-            self.shap_explainer = DeepExplainer(explainer.model, explainer.data.values)
+            self.shap_explainer = DeepExplainer(explainer.model, to_numpy(explainer.data))
         elif shap_explainer_type == "GradientExplainer":
-            self.shap_explainer = GradientExplainer(explainer.model, explainer.data.values)
+            self.shap_explainer = GradientExplainer(explainer.model, to_numpy(explainer.data))
         elif shap_explainer_type == "LinearExplainer":
-            self.shap_explainer = LinearExplainer(explainer.model, explainer.data.values)
+            self.shap_explainer = LinearExplainer(explainer.model, to_numpy(explainer.data))
         elif shap_explainer_type == "KernelExplainer":
             self.shap_explainer = KernelExplainer(
-                lambda x: explainer.predict(x), explainer.data.values
+                lambda x: explainer.predict(frame_from_values(x, explainer.data)), to_numpy(explainer.data)
             )
 
-        self.result = self.shap_explainer.shap_values(new_observation.values, **kwargs)
-        self.new_observation = new_observation
+        self.result = self.shap_explainer.shap_values(to_numpy(new_observation), **kwargs)
+        self.new_observation = to_pandas(new_observation)
         self.shap_explainer_type = shap_explainer_type
 
     def plot(self, **kwargs):

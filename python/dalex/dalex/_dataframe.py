@@ -55,7 +55,7 @@ def take_rows(data, positions):
     index = np.asarray(positions)
     if index.ndim != 1 or (index.size and index.dtype.kind not in "iu"):
         raise TypeError("row positions must be a one-dimensional integer sequence")
-    index = index.astype(np.int64)
+    index = index.astype(np.int64, copy=False)
     size = data.shape[0]
     if np.any(index >= size) or np.any(index < -size):
         raise IndexError("row position out of bounds")
@@ -65,7 +65,7 @@ def take_rows(data, positions):
     if not index.size:
         return frame.head(0).to_native()
     index = np.where(index < 0, index + size, index)
-    return frame[index.tolist(), :].to_native()
+    return frame[index, :].to_native()
 
 
 def shuffle_columns(data, columns, positions):
@@ -85,8 +85,9 @@ def shuffle_columns(data, columns, positions):
             result[name] = other[name].array
         return result
     frame = as_eager_dataframe(data)
-    selected = frame.select(names).to_native()
-    other = as_eager_dataframe(take_rows(selected, positions))
+    # Keep the Narwhals wrapper throughout the operation. Round-tripping the
+    # selected native frame through take_rows used to validate/wrap it twice more.
+    other = frame[np.asarray(positions, dtype=np.int64), names]
     return frame.with_columns(other.get_column(col) for col in names).to_native()
 
 
@@ -108,7 +109,12 @@ def set_columns(data, values):
     if isinstance(data, pd.DataFrame):
         result = data.copy()
         for name, value in values.items():
-            result.loc[:, name] = value
+            if np.ndim(value) and isinstance(result[name].dtype, pd.CategoricalDtype):
+                column = result[name].copy()
+                column.iloc[:] = value
+                result[name] = column.array
+            else:
+                result.loc[:, name] = value
         return result
     frame = as_eager_dataframe(data)
     backend = nw.get_native_namespace(frame)
@@ -164,14 +170,6 @@ class NativePredictFunction:
         return as_numpy_vector(prediction, "prediction")
 
 
-def require_pandas(data, method):
-    """Fail explicitly at an explanation family whose native migration is pending."""
-    if data is not None and not isinstance(data, pd.DataFrame):
-        raise NotImplementedError(
-            f"{method} currently requires pandas features; native backend support is pending. "
-            "Use predict_parts(type='shap') for native DALEX Shapley values."
-        )
-
 
 class NativeResidualFunction:
     """Preserve the three-argument callback contract and normalize native vectors."""
@@ -182,3 +180,36 @@ class NativeResidualFunction:
     def __call__(self, model, data, y):
         result = self.function(model, data, y)
         return result if isinstance(result, np.ndarray) else as_numpy_vector(result, "residuals")
+
+
+def select_columns(data, columns):
+    names = list(columns)
+    if isinstance(data, pd.DataFrame):
+        return data.loc[:, names]
+    return as_eager_dataframe(data).select(names).to_native()
+
+
+def numeric_columns(data):
+    if isinstance(data, pd.DataFrame):
+        return list(data.select_dtypes(include=np.number).columns)
+    return [name for name, dtype in as_eager_dataframe(data).schema.items() if dtype.is_numeric()]
+
+
+def frame_from_values(values, reference, columns=None):
+    """Explicit NumPy-library boundary: restore native feature batches for callbacks."""
+    names = list(reference.columns) if columns is None else list(columns)
+    array = np.asarray(values)
+    if array.ndim == 1:
+        array = array.reshape(1, -1)
+    if array.ndim != 2 or array.shape[1] != len(names):
+        raise ValueError("Feature matrix must have the same ordered columns as the reference")
+    if isinstance(reference, pd.DataFrame):
+        return pd.DataFrame(array, columns=names)
+    frame = as_eager_dataframe(reference)
+    native = nw.from_dict(
+        {name: array[:, i].tolist() for i, name in enumerate(names)},
+        backend=nw.get_native_namespace(frame),
+    )
+    casts = [nw.col(name).cast(frame.schema[name]) for name in names
+             if isinstance(frame.schema[name], (nw.Categorical, nw.Enum))]
+    return native.with_columns(casts).to_native() if casts else native.to_native()

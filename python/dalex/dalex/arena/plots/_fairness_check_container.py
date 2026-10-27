@@ -3,6 +3,7 @@ import pandas as pd
 
 from pandas.api.types import is_object_dtype
 from .._plot_container import PlotContainer
+from ..._dataframe import column_values
 from dalex.fairness._group_fairness import utils, checks
 
 def rm_nan(obj):
@@ -24,7 +25,7 @@ class FairnessCheckContainer(PlotContainer):
             raise Exception('Variable is not a column of explainer')
         exp = model.explainer
         y_hat = exp.predict(exp.data) if exp.y_hat is None else exp.y_hat
-        protected = exp.data[variable.variable]
+        protected = pd.Series(column_values(exp.data, variable.variable))
         if not is_object_dtype(protected):
             self.set_message('Select categorical variable to check fairness')
             return

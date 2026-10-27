@@ -1,17 +1,20 @@
 import numpy as np
 import pandas as pd
+from ..._dataframe import native_observation
 from copy import deepcopy
 from warnings import warn
 
 
 def check_columns_in_new_observation(new_observation, explainer):
-    if not set(new_observation.columns).issubset(explainer.data):
+    if not set(new_observation.columns).issubset(explainer.data.columns):
         raise ValueError(
             "Columns in new observation does not match these in training dataset."
         )
 
 
 def check_new_observation(new_observation, explainer):
+    if not isinstance(explainer.data, pd.DataFrame):
+        return native_observation(new_observation, explainer.data, single=True)
     new_observation_ = deepcopy(new_observation)
     if isinstance(new_observation_, pd.Series):
         new_observation_ = new_observation_.to_frame().T
@@ -68,7 +71,7 @@ def check_variable_groups(variable_groups, explainer):
                     "'variable_groups' is a dict of lists of variables"
                 )
 
-            wrong_names[i] = np.in1d(variable_groups_copy[key], explainer.data.columns).all()
+            wrong_names[i] = np.isin(variable_groups_copy[key], explainer.data.columns).all()
 
         wrong_names = not wrong_names.all()
 

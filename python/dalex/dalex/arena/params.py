@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import math
+import pandas as pd
+import narwhals as nw
+from .._dataframe import to_numpy, frame_from_values
 from pandas.api.types import is_numeric_dtype, is_bool_dtype, is_object_dtype
 
 class Param(ABC):
@@ -25,8 +28,8 @@ class Param(ABC):
 class ModelParam(Param):
     def __init__(self, explainer):
         self.explainer = explainer
-        indexes = np.apply_along_axis(lambda x, y: not (x == y).all(), 0, explainer.data, explainer.y)
-        self.variables = explainer.data.columns[indexes]
+        indexes = np.apply_along_axis(lambda x, y: not (x == y).all(), 0, to_numpy(explainer.data), explainer.y)
+        self.variables = pd.Index(explainer.data.columns)[indexes]
     def get_label(self):
         return self.explainer.label
     def get_type(self):
@@ -67,11 +70,13 @@ class VariableParam(Param):
         self.max = None
         self.levels = None
     def update_attributes(self, column):
+        if not isinstance(column, pd.Series):
+            column = nw.from_native(column, series_only=True).to_pandas()
         if is_bool_dtype(column):
             col_type = 'logical'
         elif is_numeric_dtype(column):
             col_type = 'numeric'
-        elif is_object_dtype(column):
+        elif is_object_dtype(column) or isinstance(column.dtype, (pd.CategoricalDtype, pd.StringDtype)):
             col_type = 'categorical'
         else:
             raise Exception('Column type is not supported')
@@ -111,7 +116,9 @@ class ObservationParam(Param):
         return self.dataset.loc[self.index]
     def get_row_for_model(self, model_param):
         try:
-            return self.dataset.loc[[self.index]][model_param.explainer.data.columns]
+            reference = model_param.explainer.data
+            row = self.dataset.loc[[self.index]][list(reference.columns)]
+            return row if isinstance(reference, pd.DataFrame) else frame_from_values(row.to_numpy(), reference)
         except:
             return None
     def get_attributes(self):

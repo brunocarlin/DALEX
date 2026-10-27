@@ -1,3 +1,4 @@
+from ..._dataframe import numeric_columns
 from pandas.api.types import is_numeric_dtype
 from .._plot_container import PlotContainer
 
@@ -17,7 +18,7 @@ class PartialDependenceContainer(PlotContainer):
     def _fit(self, model, variable):
         if not variable.variable in model.variables:
             raise Exception('Variable is not a column of explainer')
-        if is_numeric_dtype(model.explainer.data[variable.variable]):
+        if variable.variable in numeric_columns(model.explainer.data):
             self.plot_component = 'LinearDependence'
             profile = model.explainer.model_profile(
                 type='partial',

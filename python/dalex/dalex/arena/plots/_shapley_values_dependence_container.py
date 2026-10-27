@@ -1,3 +1,4 @@
+from ..._dataframe import numeric_columns
 from pandas.api.types import is_numeric_dtype
 from .._plot_container import PlotContainer
 
@@ -14,7 +15,7 @@ class ShapleyValuesDependenceContainer(PlotContainer):
     def _fit(self, model, variable):
         if variable.variable not in model.variables:
             raise Exception('Variable is not a column of explainer')
-        is_numeric = is_numeric_dtype(model.explainer.data[variable.variable])
+        is_numeric = variable.variable in numeric_columns(model.explainer.data)
         if is_numeric and variable.levels is None:
             self.plot_component = 'LinearShapleyDependence'
         else:

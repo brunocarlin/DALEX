@@ -1,6 +1,7 @@
 # utility functions for Explainer methods
 import numpy as np
 import pandas as pd
+from .._dataframe import to_numpy, frame_from_values, select_columns
 
 import types, inspect, warnings
     
@@ -27,7 +28,7 @@ def unpack_kwargs_lime(explainer, new_observation, **kwargs):
     explanation_dict = {k: kwargs.pop(k) for k in dict(kwargs) if k in explanation_args}
 
     if 'training_data' not in explainer_dict:
-        explainer_dict['training_data'] = explainer.data.to_numpy()
+        explainer_dict['training_data'] = to_numpy(explainer.data)
     if 'mode' not in explainer_dict:
         explainer_dict['mode'] = explainer.model_type
     if 'feature_names' not in explainer_dict:
@@ -36,11 +37,11 @@ def unpack_kwargs_lime(explainer, new_observation, **kwargs):
         explanation_dict['data_row'] = new_observation
     if 'predict_fn' not in explanation_dict:
         if explainer_dict['mode'] == 'regression':
-            explanation_dict['predict_fn'] = lambda x: explainer.predict(pd.DataFrame(x, columns=explainer.data.columns))
+            explanation_dict['predict_fn'] = lambda x: explainer.predict(frame_from_values(x, explainer.data))
         elif explainer_dict['mode'] == 'classification':
             explanation_dict['predict_fn'] = \
-                lambda x: np.concatenate([1 - explainer.predict(pd.DataFrame(x, columns=explainer.data.columns)).reshape(-1, 1),
-                                          explainer.predict(pd.DataFrame(x, columns=explainer.data.columns)).reshape(-1, 1)],
+                lambda x: np.concatenate([1 - explainer.predict(frame_from_values(x, explainer.data)).reshape(-1, 1),
+                                          explainer.predict(frame_from_values(x, explainer.data)).reshape(-1, 1)],
                                          axis=1)
         else:
             raise ValueError("Pass a 'mode' parameter to the `predict_surrogate` method. "
@@ -94,12 +95,12 @@ def create_surrogate_model(explainer, type, max_vars, max_depth, **kwargs):
         if hasattr(explainer.model, "feature_importances_"):  # scikit, xgboost, lightgbm
             # take last max_vars of the variables sorted from least to most important
             vi = explainer.model.feature_importances_
-            variables = explainer.data.columns[np.argsort(vi)][-max_vars:]
+            variables = np.asarray(explainer.data.columns)[np.argsort(vi)][-max_vars:]
         else:
             # calculate model_parts and take max_vars most important variables
             vi = explainer.model_parts(N=500, B=15)
             variables = vi.result.variable[~vi.result.variable.isin(['_baseline_', '_full_model_'])].tail(max_vars)
-        X = explainer.data.loc[:, variables]
+        X = select_columns(explainer.data, variables)
     else:
         variables = explainer.data.columns
         X = explainer.data
@@ -107,7 +108,7 @@ def create_surrogate_model(explainer, type, max_vars, max_depth, **kwargs):
     surrogate_model.fit(X, y_hat)
 
     # add additional attributes to the surrogate model object
-    surrogate_model.feature_names = variables.tolist()
+    surrogate_model.feature_names = list(variables)
     if hasattr(surrogate_model, 'classes_'):
         surrogate_model.class_names = surrogate_model.classes_.astype(str).tolist()
     else:

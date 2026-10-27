@@ -1,3 +1,4 @@
+from .._dataframe import to_pandas
 import logging
 import sys
 import json
@@ -50,7 +51,7 @@ def start_server(arena, host, port, disable_logs):
                 custom_params = True
                 try:
                     obj = json.loads(param_label)
-                    data = result['model'].explainer.data if not result['model'] is None else None
+                    data = to_pandas(result['model'].explainer.data) if not result['model'] is None else None
                     if data is None:
                         raise Exception('Custom observation requires model param')
                     df = pd.concat([

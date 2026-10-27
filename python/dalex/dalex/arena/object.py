@@ -1,4 +1,4 @@
-from .._dataframe import require_pandas
+from .._dataframe import to_pandas
 import threading
 import time
 import numpy as np
@@ -176,7 +176,6 @@ class Arena:
         """
         if not isinstance(explainer, Explainer):
             raise Exception('Invalid Explainer argument')
-        require_pandas(explainer.data, "arena.push_model")
         if explainer.label in self.list_params('model'):
             raise Exception('Explainer with the same label was already added')
         precalculate = self.precalculate if precalculate is None else bool(precalculate)
@@ -205,8 +204,9 @@ class Arena:
             Overrides constructor `precalculate` parameter when it is not None.
             If true, then only plots using thease observations will be precalculated.
         """
-        if not isinstance(observations, DataFrame):
-            raise Exception('Observations argument is not a pandas DataFrame')
+        # Observation labels/attributes are presentation metadata. Prediction
+        # batches are restored to the model's native backend in ObservationParam.
+        observations = to_pandas(observations)
         if len(observations.index.names) != 1:
             raise Exception('Observations argument need to have only one index')
         if not observations.index.is_unique:
@@ -246,8 +246,7 @@ class Arena:
             Overrides constructor `precalculate` parameter when it is not None.
             If true, then only plots using this model will be precalculated.
         """
-        if not isinstance(dataset, DataFrame):
-            raise Exception('Dataset argument is not a pandas DataFrame')
+        dataset = to_pandas(dataset)  # Arena EDA/statistics table boundary
         if len(dataset.columns.names) != 1:
             raise Exception('Dataset argument need to have only one level column names')
         precalculate = self.precalculate if precalculate is None else bool(precalculate)

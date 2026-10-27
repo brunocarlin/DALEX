@@ -18,12 +18,13 @@ all DALEX integrations support Polars.
 | DALEX Shapley values (`type='shap'`) | yes | observation metadata and contributions |
 | ceteris paribus | yes | profile table after prediction |
 | partial, accumulated, conditional profiles | yes | aggregation of profile result tables |
-| external SHAP wrapper, LIME, model surrogates | pending: explicit `NotImplementedError` for non-pandas | legacy third-party model adapters |
-| Aspect, Arena | pending: explicit `NotImplementedError` for non-pandas | dependence calculations and Arena metadata |
+| SHAP kernel/tree/linear wrappers, LIME, model surrogates | yes | explicit NumPy input/output boundaries of the third-party libraries |
+| Aspect importance/triplots | yes | correlation/contingency statistics and result tables |
+| Arena | yes | labels, attributes, EDA and serialized plot tables |
 
-Classification performance, permutation importance and group fairness have
-cross-backend integration coverage; regression fairness is not yet certified. Direct use of specialized Aspect internals
-is outside the tested native API surface. Other Narwhals eager backends may validate
+Classification and regression fairness have cross-backend integration coverage. The optional PPS dependence method still depends on ppscore and its pandas compatibility.
+Deep/Gradient SHAP matrix boundaries are implemented, but TensorFlow/PyTorch integration
+has not been certified by this test matrix. Other Narwhals eager backends may validate
 but have not been certified. Lazy inputs are rejected without collecting them.
 
 Native observation frames must use the same backend and ordered column names as
@@ -102,3 +103,32 @@ permutation rounds, at most 10k sampled rows. CI uses two sizes and three trials
 Ratios above one favor Polars; regressions below one must also be reported.
 
 Measured results and validation details: [benchmarks/results/VALIDATION.md](benchmarks/results/VALIDATION.md).
+
+## Remaining-family migration and performance attribution
+
+LIME and kernel SHAP require NumPy matrices. Their callbacks now explicitly restore
+that matrix to the explainer's native backend before invoking the original model.
+Model-specific SHAP explainers consume their estimator directly. Surrogate models
+train on the selected native feature frame. No lazy frame is collected.
+
+Aspect keeps feature sampling and masked replacement native; its statistical
+correlation/contingency matrices remain pandas-backed to preserve their numerical
+semantics. Custom dependence callables receive the native input. Arena retains the
+native Explainer, with a pandas copy for observation labels/EDA metadata only;
+observation and background SHAP callbacks restore or retain native feature batches.
+The HTTP custom-observation route and all 13 plot container families have integration
+coverage, including numeric/categorical fairness and native SHAP resources.
+
+The first implementation repeatedly unwrapped and revalidated selected columns and
+converted row indices into Python lists for each permutation. The next revision
+keeps a single Narwhals wrapper and gathers using the NumPy index vector directly.
+On the 10k-row cProfile workload, wrapper calls fell from 570 to 210 across six
+explanations and cumulative shuffle time fell from 0.157s to 0.070s. Those are
+profiled attribution measurements, not isolated end-to-end speedup claims.
+
+Most wall time in that workload is the same sklearn histogram-tree inference
+(about 0.27s per explanation on either backend). Matrix materialization/model
+validation adds backend-dependent overhead; replacing pandas cannot accelerate
+the estimator itself. Small-column permutation work also differs from large
+relational queries where Polars often helps. Use `benchmarks/profile_backend_overhead.py`
+for attribution and the isolated-process benchmark for performance claims.

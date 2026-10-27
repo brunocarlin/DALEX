@@ -79,8 +79,10 @@ def shuffle_columns(data, columns, positions):
     if isinstance(data, pd.DataFrame):
         other = take_rows(data.loc[:, names], positions)
         result = data.copy()
-        # Positional assignment is essential with non-default or repeated indexes.
-        result.loc[:, names] = other.to_numpy()
+        # Extension arrays assign positionally without losing categorical/nullable
+        # dtypes on older pandas, or aligning shuffled row labels.
+        for name in names:
+            result[name] = other[name].array
         return result
     frame = as_eager_dataframe(data)
     selected = frame.select(names).to_native()

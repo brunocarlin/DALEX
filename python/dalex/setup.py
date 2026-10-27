@@ -88,7 +88,7 @@ def run_setup():
             'plotly>=6.0.0',
             'tqdm>=4.61.2',
         ],
-        extras_require={'full': full_dependencies, 'polars': ['polars', 'pyarrow']},
+        extras_require={'full': full_dependencies, 'polars': ['polars>=1.0', 'pyarrow']},
         packages=find_packages(include=["dalex", "dalex.*"]),
         python_requires='>=3.10',
         include_package_data=True

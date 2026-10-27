@@ -90,16 +90,17 @@ def calculate_yhats_distributions(explainer):
 
 def get_single_random_path(predict, model, data, label, new_observation, random_path, b):
     new_observation = to_pandas(new_observation)
+    names = np.asarray(column_names(data))
     current_data = deepcopy(data)
     yhats = np.empty(len(random_path) + 1)
     yhats[0] = predict(model, current_data).mean()
     for i, candidate in enumerate(random_path):
-        current_data = set_columns(current_data, {column_names(data)[candidate]: new_observation.iloc[0, candidate]})
+        current_data = set_columns(current_data, {names[candidate]: new_observation.iloc[0, candidate]})
         yhats[i + 1] = predict(model, current_data).mean()
 
     diffs = np.diff(yhats)
 
-    variable_names = np.asarray(column_names(data))[random_path]
+    variable_names = names[random_path]
 
     new_observation_f = new_observation.loc[:, variable_names] \
         .apply(lambda x: nice_format(x.iloc[0]))

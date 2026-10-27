@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import narwhals as nw
+from narwhals.dependencies import is_polars_dataframe, is_pyarrow_table
 
 
 def as_eager_dataframe(data):
@@ -48,7 +49,20 @@ def to_numpy(data):
 
 def column_names(data):
     """Feature labels, including backends whose .columns contains column arrays."""
-    return data.columns if isinstance(data, pd.DataFrame) else as_eager_dataframe(data).columns
+    if isinstance(data, pd.DataFrame) or is_polars_dataframe(data):
+        return data.columns
+    if is_pyarrow_table(data):
+        return data.column_names
+    return as_eager_dataframe(data).columns
+
+
+def iter_column_arrays(data):
+    """Inspect features without materializing a full mixed/structured matrix."""
+    if isinstance(data, pd.DataFrame):
+        yield from (series.to_numpy() for _, series in data.items())
+    else:
+        frame = as_eager_dataframe(data)
+        yield from (frame.get_column(name).to_numpy() for name in frame.columns)
 
 
 def take_rows(data, positions):

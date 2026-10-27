@@ -78,3 +78,30 @@ def test_lightgbm_explicit_categorical_encoding_and_missing_values():
         results.append(exp.model_parts(N=40, B=3, random_state=42).result)
     pd.testing.assert_frame_equal(*results, check_exact=False, atol=1e-10, rtol=1e-10)
     assert data.schema == schema and original["category"].to_list() == labels
+
+
+@pytest.mark.parametrize("estimator", ["sklearn", "lightgbm"])
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_shared_native_estimator_seeded_threaded_importance(estimator, backend):
+    from concurrent.futures import ThreadPoolExecutor
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from lightgbm import LGBMRegressor
+
+    rng = np.random.default_rng(123)
+    data = pl.DataFrame(rng.normal(size=(64, 3)), schema=["x", "z", "u"])
+    y = data["x"].to_numpy() * 2 + rng.normal(size=64) * .1
+    model = (LGBMRegressor(n_estimators=8, n_jobs=1, verbosity=-1, random_state=42)
+             if estimator == "lightgbm" else HistGradientBoostingRegressor(max_iter=8, random_state=42))
+    model.fit(data, y)
+    frame = data.to_pandas() if backend == "pandas" else data
+
+    def calculate(seed):
+        exp = dx.Explainer(model, frame, y, label="model", precalculate=False, verbose=False)
+        return exp.model_parts(N=32, B=3, random_state=seed).result
+
+    seeds = [7, 31, 42, 123]
+    expected = [calculate(seed) for seed in seeds]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        actual = list(pool.map(calculate, seeds))
+    for reference, result in zip(expected, actual):
+        pd.testing.assert_frame_equal(reference, result)

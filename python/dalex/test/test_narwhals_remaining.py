@@ -295,9 +295,13 @@ def test_arena_resource_background_error_is_reported():
         resource.get_result()
 
 
-def test_arena_immediate_stop_and_restart():
+def test_arena_immediate_stop_and_restart(monkeypatch):
     from dalex.arena.static import get_free_port
 
+    def fail_reverse_dns(*args, **kwargs):
+        raise AssertionError("local server must not require reverse DNS")
+
+    monkeypatch.setattr("socket.getfqdn", fail_reverse_dns)
     arena = dx.Arena(verbose=False)
     port = get_free_port()
     for _ in range(2):

@@ -16,12 +16,21 @@ def start_server(arena, host, port, disable_logs, ready=None):
     from werkzeug.serving import ThreadedWSGIServer
     from flask_cors import CORS
     import requests
+    from socketserver import TCPServer
+
+    class ArenaWSGIServer(ThreadedWSGIServer):
+        def server_bind(self):
+            # HTTPServer's default reverse DNS lookup can block local startup
+            # when the host resolver is unavailable. WSGI accepts the bound IP.
+            TCPServer.server_bind(self)
+            self.server_name = self.server_address[0]
+            self.server_port = self.server_address[1]
 
     cli = sys.modules['flask.cli']
     cli.show_server_banner = lambda *x: None
     app = Flask(__name__)
     CORS(app)
-    wsgi_server = ThreadedWSGIServer(host=host, port=port, app=app)
+    wsgi_server = ArenaWSGIServer(host=host, port=port, app=app)
     shutdown_token = str(random.randrange(2<<63))
     
     log = logging.getLogger('werkzeug')

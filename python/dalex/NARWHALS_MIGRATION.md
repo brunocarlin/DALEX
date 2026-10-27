@@ -21,8 +21,8 @@ all DALEX integrations support Polars.
 | external SHAP wrapper, LIME, model surrogates | pending: explicit `NotImplementedError` for non-pandas | legacy third-party model adapters |
 | Aspect, Arena | pending: explicit `NotImplementedError` for non-pandas | dependence calculations and Arena metadata |
 
-Fairness primarily consumes predictions and targets; it has not received native
-integration coverage in this increment. Direct use of specialized Aspect internals
+Classification performance, permutation importance and group fairness have
+cross-backend integration coverage; regression fairness is not yet certified. Direct use of specialized Aspect internals
 is outside the tested native API surface. Other Narwhals eager backends may validate
 but have not been certified. Lazy inputs are rejected without collecting them.
 
@@ -45,8 +45,8 @@ on Linux and macOS, plus Linux 3.14t with `PYTHON_GIL=0`. Maintainers should exp
 approve the minimum-version change before release. Pandas remains required at
 `>=1.5.3,<3` for the legacy API and output tables; pandas 3 is not supported here.
 
-No new mandatory Polars dependency is imposed on pandas-only users. Install Polars
-(and PyArrow for pandas result materialization) when using native Polars inputs.
+No new mandatory Polars dependency is imposed on pandas-only users. Install `dalex[polars]`
+(Polars and PyArrow for pandas result materialization) for native Polars inputs.
 The test dependencies always install both, so backend tests cannot silently skip.
 
 The default permutation RMSE currently rejects sample weights in existing DALEX.

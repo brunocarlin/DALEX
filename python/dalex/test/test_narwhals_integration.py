@@ -143,3 +143,61 @@ def test_pending_families_raise_precise_error(family):
             dx.Aspect(explainer)
         else:
             dx.Arena().push_model(explainer)
+
+class StrictClassifier:
+    def __init__(self, backend):
+        self.backend = backend
+
+    def predict_proba(self, data):
+        assert isinstance(data, pd.DataFrame if self.backend == "pandas" else pl.DataFrame)
+        p = 1 / (1 + np.exp(-data["x"].to_numpy()))
+        return np.column_stack([1-p, p])
+
+
+def test_classification_and_fairness_parity():
+    rng = np.random.default_rng(123)
+    frame = pd.DataFrame({"x": rng.normal(size=80), "z": rng.normal(size=80)})
+    y = (frame.x.to_numpy()+rng.normal(size=80)*.5 > 0).astype(int)
+    results = []
+    for backend in ("pandas", "polars"):
+        data = frame if backend == "pandas" else pl.from_pandas(frame)
+        explainer = dx.Explainer(StrictClassifier(backend), data, y, model_type="classification", verbose=False)
+        importance = explainer.model_parts(N=50, B=3, random_state=42)
+        fairness = explainer.model_fairness(protected=np.tile(["a","b"],40), privileged="a")
+        results.append((explainer.model_performance().result, importance.result, fairness.result))
+    for a,b in zip(*results):
+        np.testing.assert_allclose(a.select_dtypes(include=np.number), b.select_dtypes(include=np.number), atol=1e-12, equal_nan=True)
+
+
+@pytest.mark.parametrize("family", ["shap", "predict_profile"])
+def test_native_multiprocessing(family):
+    data = pl.DataFrame({"x": [1., 2., 3., 4.], "z": [4., 3., 2., 1.]})
+    explainer = dx.Explainer(StrictRegressor("polars"), data, model_type="regression", verbose=False)
+    if family == "shap":
+        result = explainer.predict_parts(data.head(1), type="shap", N=None, B=2, processes=2, random_state=42)
+        expected = explainer.predict_parts(data.head(1), type="shap", N=None, B=2, processes=2, random_state=42)
+    else:
+        result = explainer.predict_profile(data.head(2), grid_points=3, processes=2, verbose=False)
+        expected = explainer.predict_profile(data.head(2), grid_points=3, processes=1, verbose=False)
+    pd.testing.assert_frame_equal(result.result, expected.result)
+
+
+def test_mixed_schema_profiles_and_native_observation_inputs():
+    class MixedPredictor:
+        def predict(self, frame):
+            assert isinstance(frame, pl.DataFrame)
+            assert frame.schema["category"] == pl.Categorical
+            return frame["x"].to_numpy() + (frame["category"].cast(pl.String) == "a").to_numpy()
+    data = pl.DataFrame({"x": [1., 2., 3.], "category": ["a","b","a"]}).with_columns(pl.col("category").cast(pl.Categorical))
+    explainer = dx.Explainer(MixedPredictor(), data, np.arange(3.), model_type="regression", verbose=False)
+    profiles = explainer.predict_profile(data.head(1), grid_points=3, verbose=False)
+    assert set(profiles.result._vname_) == {"x","category"}
+    explainer.predict_parts(data.head(1), N=None)
+
+
+def test_numpy_observation_uses_reference_backend():
+    data = pl.DataFrame({"x": [1., 2., 3.], "z": [3., 2., 1.]})
+    explainer = dx.Explainer(StrictRegressor("polars"), data, model_type="regression", verbose=False)
+    a = explainer.predict_parts(np.array([1., 3.]), N=None)
+    b = explainer.predict_parts(data.head(1), N=None)
+    pd.testing.assert_frame_equal(a.result, b.result)

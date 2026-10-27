@@ -107,3 +107,14 @@ def test_nondefault_index_permutation_is_positional():
     assert result["x"].tolist() == [30, 10, 20]
     assert result.index.equals(data.index)
     pd.testing.assert_frame_equal(data, pd.DataFrame({"x": [10, 20, 30], "y": [40, 50, 60]}, index=[100, 7, 100]))
+
+
+def test_legacy_pandas_integer_column_names():
+    import dalex as dx
+    data = pd.DataFrame({0: [1., 2., 3.], 1: [3., 2., 1.]}, index=[20, 5, 99])
+    class Model:
+        def predict(self, frame):
+            return frame[0].to_numpy()+frame[1].to_numpy()/2
+    explainer = dx.Explainer(Model(), data, np.arange(3.), verbose=False)
+    result = explainer.model_parts(B=2, N=None, random_state=42)
+    assert set(result.result.variable) == {0, 1, "_baseline_", "_full_model_"}

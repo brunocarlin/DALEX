@@ -41,6 +41,8 @@ def as_numpy_vector(value, name):
 def to_numpy(data):
     if isinstance(data, np.ndarray):
         return data
+    if isinstance(data, pd.DataFrame):
+        return data.to_numpy()
     return as_eager_dataframe(data).to_numpy()
 
 
@@ -71,18 +73,18 @@ def shuffle_columns(data, columns, positions):
 
     Narwhals preserves native backends; pandas assignment retains legacy index semantics.
     """
-    names = [columns] if isinstance(columns, str) else list(columns)
-    frame = as_eager_dataframe(data)
+    names = [columns] if np.isscalar(columns) else list(columns)
     if len(positions) != data.shape[0]:
         raise ValueError("permutation must have the same length as data")
-    selected = frame.select(names).to_native()
-    other = take_rows(selected, positions)
     if isinstance(data, pd.DataFrame):
+        other = take_rows(data.loc[:, names], positions)
         result = data.copy()
         # Positional assignment is essential with non-default or repeated indexes.
         result.loc[:, names] = other.to_numpy()
         return result
-    other = as_eager_dataframe(other)
+    frame = as_eager_dataframe(data)
+    selected = frame.select(names).to_native()
+    other = as_eager_dataframe(take_rows(selected, positions))
     return frame.with_columns(other.get_column(col) for col in names).to_native()
 
 
@@ -94,6 +96,8 @@ def to_pandas(data):
 
 
 def column_values(data, name):
+    if isinstance(data, pd.DataFrame):
+        return data[name].to_numpy()
     return as_eager_dataframe(data).get_column(name).to_numpy()
 
 

@@ -21,7 +21,7 @@ def check_data(data, model, verbose):
             verbose_cat("  -> data              : h2o.H2OFrame converted to pandas.DataFrame. Column types are saved in the model.", verbose=verbose)
             model._column_types = data.types  # pandas attribute 'attrs' is experimental and may break in future versions
             data = data.as_data_frame()
-        else:
+        elif not isinstance(data, pd.DataFrame):
             as_eager_dataframe(data)  # validate backend without changing it
 
         # Only pandas exposes a user-defined index; Polars/Arrow use row positions.
@@ -38,7 +38,7 @@ def check_method_data(data):
     if isinstance(data, np.ndarray):
         if data.ndim != 2:
             raise ValueError("'data' must have 2 dimensions")
-    else:
+    elif not isinstance(data, pd.DataFrame):
         as_eager_dataframe(data)
 
 

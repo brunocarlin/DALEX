@@ -28,11 +28,10 @@ def calculate_variable_importance(explainer,
         # Create number generator for each iteration
         ss = SeedSequence(random_state)
         generators = [default_rng(s) for s in ss.spawn(B)]
-        pool = mp.get_context('spawn').Pool(processes)
-        result = pool.starmap_async(loss_after_permutation, [
-            (explainer.data, explainer.y, explainer.weights, explainer.model, explainer.predict_function, loss_function, variables, N, generators[i]) for
-            i in range(B)]).get()
-        pool.close()
+        with mp.get_context('spawn').Pool(processes) as pool:
+            result = pool.starmap_async(loss_after_permutation, [
+                (explainer.data, explainer.y, explainer.weights, explainer.model, explainer.predict_function, loss_function, variables, N, generators[i]) for
+                i in range(B)]).get()
 
     raw = pd.concat(result, sort=True)
     result = raw.mean().sort_values().reset_index()

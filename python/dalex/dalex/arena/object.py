@@ -174,9 +174,9 @@ class Arena:
             Overrides constructor `precalculate` parameter when it is not None.
             If true, then only plots using this model will be precalculated.
         """
-        require_pandas(explainer.data, "arena.push_model")
         if not isinstance(explainer, Explainer):
             raise Exception('Invalid Explainer argument')
+        require_pandas(explainer.data, "arena.push_model")
         if explainer.label in self.list_params('model'):
             raise Exception('Explainer with the same label was already added')
         precalculate = self.precalculate if precalculate is None else bool(precalculate)

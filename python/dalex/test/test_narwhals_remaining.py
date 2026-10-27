@@ -255,3 +255,41 @@ def test_arena_http_custom_polars_observation():
         assert response.json()["plotComponent"] != "Message", response.text
     finally:
         arena.stop_server()
+
+
+def test_arena_resource_notification_survives_until_consumer():
+    from dalex.arena._resource import Resource
+
+    class Notification(Resource):
+        resource_type = "notification-test"
+        required_params = []
+        options_category = "notification-test"
+        options = {}
+
+    resource = Notification(dx.Arena(verbose=False))
+    resource._emit_update()
+    assert resource.update_event.wait(timeout=0.1)
+    resource.wait_for_update()
+    assert not resource.update_event.is_set()
+    resource.cancel()
+    assert resource.update_event.wait(timeout=0.1)
+
+
+def test_arena_resource_background_error_is_reported():
+    from dalex.arena._resource import Resource
+
+    class Failure(Resource):
+        resource_type = "failure-test"
+        required_params = []
+        options_category = "failure-test"
+        options = {}
+
+        def _fit(self):
+            raise RuntimeError("predictor failed")
+
+    resource = Failure(dx.Arena(verbose=False)).fit({})
+    assert resource.update_event.wait(timeout=2)
+    resource.thread.join(timeout=2)
+    assert not resource.thread.is_alive()
+    with pytest.raises(RuntimeError, match="predictor failed"):
+        resource.get_result()

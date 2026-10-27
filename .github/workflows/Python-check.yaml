@@ -51,7 +51,7 @@ jobs:
       - name: Verify interpreter and GIL after dependency imports
         run: python python/dalex/ci/verify_runtime.py
       - name: Run full suite including mandatory pandas and Polars tests
-        run: python -m pytest -q -ra python/dalex/test --junitxml=test-results.xml
+        run: python -m pytest -vv -ra --timeout=120 --timeout-method=thread -o faulthandler_timeout=60 python/dalex/test --junitxml=test-results.xml
       - name: Save test and dependency evidence
         if: always()
         uses: actions/upload-artifact@v4

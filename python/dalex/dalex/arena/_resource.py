@@ -69,7 +69,7 @@ class Resource(OptionBase):
             required_params[p] = params.get(p)
             self.params[p] = params.get(p).get_label()
         with self.mutex:
-            self.thread = threading.Thread(target=self._fit, kwargs=required_params)
+            self.thread = threading.Thread(target=self._init_thread, args=(required_params,))
             self.thread.start()
         return self
     def cancel(self):
@@ -79,12 +79,15 @@ class Resource(OptionBase):
         with self.mutex:
             self.cancel_signal = True
             self.exception = Exception('Task aborted')
+        self._emit_update()
     def _init_thread(self, kwargs):
         try:
             self._fit(**kwargs)
         except Exception as e:
             with self.mutex:
                 self.exception = e
+                self.is_done = True
+            self._emit_update()
     def check_param(self, param_type, value):
         if not isinstance(value, Param.get_param_class(param_type)):
             raise Exception('Invalid param ' + str(param_type))
@@ -107,6 +110,8 @@ class Resource(OptionBase):
         Function blocks until results are updated
         """
         self.update_event.wait()
-    def _emit_update(self):
-        self.update_event.set()
         self.update_event.clear()
+    def _emit_update(self):
+        # The consumer acknowledges the event. Clearing here loses notifications
+        # when a fast worker finishes before wait_for_update starts waiting.
+        self.update_event.set()

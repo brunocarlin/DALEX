@@ -1,4 +1,5 @@
 pytest
+pytest-timeout
 polars>=1.0
 pyarrow
 scikit-learn

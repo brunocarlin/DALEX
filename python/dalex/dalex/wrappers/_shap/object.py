@@ -1,7 +1,20 @@
 from ..._dataframe import to_numpy, to_pandas, native_observation, frame_from_values
 import pandas as pd
 import numpy as np
+import sys
 from . import checks
+
+
+def model_matrix(data, model, shap_type):
+    """Honor model-specific tensor boundaries without changing feature backends."""
+    values = to_numpy(data)
+    torch = sys.modules.get("torch")
+    if shap_type in ("DeepExplainer", "GradientExplainer") and torch is not None and isinstance(model, torch.nn.Module):
+        parameter = next(model.parameters(), None)
+        if parameter is not None:
+            return torch.tensor(values, dtype=parameter.dtype, device=parameter.device)
+        return torch.tensor(values, dtype=torch.get_default_dtype())
+    return values
 from ..._explanation import Explanation
 
 
@@ -42,6 +55,7 @@ class ShapWrapper(Explanation):
         self.result = None
         self.new_observation = None
         self.shap_explainer_type = None
+        self.expected_value = None
 
     def fit(self,
             explainer,
@@ -81,23 +95,34 @@ class ShapWrapper(Explanation):
             else:
                 new_observation = native_observation(new_observation, explainer.data, single=True)
 
+        background = model_matrix(explainer.data, explainer.model, shap_explainer_type)
         if shap_explainer_type == "TreeExplainer":
             try:
-                self.shap_explainer = TreeExplainer(explainer.model, to_numpy(explainer.data))
+                self.shap_explainer = TreeExplainer(explainer.model, background)
             except: # https://github.com/ModelOriented/DALEX/issues/371
                 self.shap_explainer = TreeExplainer(explainer.model)
         elif shap_explainer_type == "DeepExplainer":
-            self.shap_explainer = DeepExplainer(explainer.model, to_numpy(explainer.data))
+            self.shap_explainer = DeepExplainer(explainer.model, background)
         elif shap_explainer_type == "GradientExplainer":
-            self.shap_explainer = GradientExplainer(explainer.model, to_numpy(explainer.data))
+            model = explainer.model
+            torch = sys.modules.get("torch")
+            if torch is not None and isinstance(model, torch.nn.Module):
+                from ._torch import TorchInputAdapter
+                model = TorchInputAdapter(model)
+            self.shap_explainer = GradientExplainer(model, background)
         elif shap_explainer_type == "LinearExplainer":
-            self.shap_explainer = LinearExplainer(explainer.model, to_numpy(explainer.data))
+            self.shap_explainer = LinearExplainer(explainer.model, background)
         elif shap_explainer_type == "KernelExplainer":
             self.shap_explainer = KernelExplainer(
-                lambda x: explainer.predict(frame_from_values(x, explainer.data)), to_numpy(explainer.data)
+                lambda x: explainer.predict(frame_from_values(x, explainer.data)), background
             )
 
-        self.result = self.shap_explainer.shap_values(to_numpy(new_observation), **kwargs)
+        self.result = self.shap_explainer.shap_values(model_matrix(new_observation, explainer.model, shap_explainer_type), **kwargs)
+        self.expected_value = getattr(self.shap_explainer, "expected_value", None)
+        if self.expected_value is None:
+            # GradientExplainer does not expose expected_value, but force plots
+            # need the same background-prediction baseline as other explainers.
+            self.expected_value = explainer.predict(explainer.data).mean()
         self.new_observation = new_observation if isinstance(new_observation, pd.DataFrame) else to_pandas(new_observation)
         self.shap_explainer_type = shap_explainer_type
 
@@ -124,16 +149,18 @@ class ShapWrapper(Explanation):
         from shap import force_plot, summary_plot
         
         if self.type == 'predict_parts':
-            if isinstance(self.shap_explainer.expected_value, (np.ndarray, list)):
-                base_value = self.shap_explainer.expected_value[1]
-            else:
-                base_value = self.shap_explainer.expected_value
+            expected_value = getattr(self, "expected_value", None)
+            if expected_value is None:
+                expected_value = self.shap_explainer.expected_value
+            # TensorFlow's DeepExplainer can return an EagerTensor here.
+            flat_expected = np.asarray(expected_value).reshape(-1)
+            base_value = flat_expected[0 if flat_expected.size == 1 else 1]
 
             if isinstance(self.result, list):
                 shap_values = self.result[1] 
             elif isinstance(self.result, np.ndarray):
                 if len(self.result.shape) == 3:
-                    shap_values = self.result[:, :, 1]
+                    shap_values = self.result[:, :, 0 if self.result.shape[-1] == 1 else 1]
                 else:
                     shap_values = self.result
 
@@ -144,6 +171,9 @@ class ShapWrapper(Explanation):
                        matplotlib=True,
                        **kwargs)
         elif self.type == 'model_parts':
-            summary_plot(shap_values=self.result,
+            values = self.result
+            if isinstance(values, np.ndarray) and values.ndim == 3 and values.shape[-1] == 1:
+                values = values[..., 0]
+            summary_plot(shap_values=values,
                          features=self.new_observation,
                          **kwargs)

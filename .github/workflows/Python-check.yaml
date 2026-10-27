@@ -53,7 +53,7 @@ jobs:
       - name: Verify interpreter and GIL after dependency imports
         run: python python/dalex/ci/verify_runtime.py
       - name: Run full suite including mandatory pandas and Polars tests
-        run: python -m pytest -vv -ra --timeout=120 --timeout-method=signal python/dalex/test --junitxml=test-results.xml
+        run: python -m pytest -vv -ra --timeout=120 --timeout-method=thread python/dalex/test --junitxml=test-results.xml
       - name: Save test and dependency evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -95,7 +95,7 @@ jobs:
       - name: Record dependency automatic GIL fallback without forcing its state
         run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python python/dalex/ci/probe_gil_imports.py
       - name: Run complete suite with GIL disabled
-        run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pytest -vv -ra --timeout=120 --timeout-method=signal python/dalex/test --junitxml=test-results.xml
+        run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pytest -vv -ra --timeout=120 --timeout-method=thread python/dalex/test --junitxml=test-results.xml
       - name: Save free-threaded evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -130,6 +130,49 @@ jobs:
         with:
           name: dalex-narwhals-benchmark-${{ matrix.model }}
           path: dalex-narwhals-benchmark*
+
+  neural-backends:
+    name: Neural SHAP / ${{ matrix.framework }} / Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - framework: torch
+            python: '3.14'
+          - framework: tensorflow
+            python: '3.13'
+    env:
+      DALEX_NEURAL_FRAMEWORK: ${{ matrix.framework }}
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      MPLBACKEND: Agg
+      CUDA_VISIBLE_DEVICES: '-1'
+      TF_CPP_MIN_LOG_LEVEL: '3'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ./python/dalex pytest shap polars pyarrow matplotlib
+      - if: matrix.framework == 'torch'
+        run: python -m pip install 'torch==2.14.1+cpu' --index-url https://download.pytorch.org/whl/cpu
+      - if: matrix.framework == 'tensorflow'
+        # Stable TensorFlow does not currently publish cp314 wheels.
+        run: python -m pip install 'tensorflow==2.21.*'
+      - run: |
+          python -m pip check
+          python -m pip freeze > neural-versions.txt
+          python -m pytest -vv -ra python/dalex/integration_tests/test_neural_backends.py --junitxml=neural-tests.xml
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neural-${{ matrix.framework }}
+          path: |
+            neural-tests.xml
+            neural-versions.txt
 
   minimum-pandas:
     runs-on: ubuntu-latest

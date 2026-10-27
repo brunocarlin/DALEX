@@ -3,8 +3,10 @@
 import numpy as np
 import pandas as pd
 import polars as pl
+import pyarrow as pa
 import pytest
 import dalex as dx
+from dalex._dataframe import column_values
 
 
 class NativeModel:
@@ -14,16 +16,17 @@ class NativeModel:
 
     def predict(self, data):
         assert isinstance(
-            data, pd.DataFrame if self.backend == "pandas" else pl.DataFrame
+            data, {"pandas": pd.DataFrame, "polars": pl.DataFrame, "arrow": pa.Table}[self.backend]
         ), type(data)
         self.seen.append(data)
-        return (2 * data["x"] - 0.5 * data["z"] + 0.1 * data["u"]).to_numpy()
+        return 2 * column_values(data, "x") - .5 * column_values(data, "z") + .1 * column_values(data, "u")
 
 
 def fixture(backend):
     rng = np.random.default_rng(123)
     frame = pd.DataFrame(rng.normal(size=(48, 3)), columns=["x", "z", "u"])
-    data = frame if backend == "pandas" else pl.from_pandas(frame)
+    data = {"pandas": lambda: frame, "polars": lambda: pl.from_pandas(frame),
+            "arrow": lambda: pa.Table.from_pandas(frame)}[backend]()
     model = NativeModel(backend)
     y = (2 * frame.x - 0.5 * frame.z + 0.1 * frame.u).to_numpy() + rng.normal(
         size=48
@@ -31,7 +34,7 @@ def fixture(backend):
     exp = dx.Explainer(
         model, data, y, model_type="regression", label="model", verbose=False
     )
-    obs = data.iloc[[0]] if backend == "pandas" else data.head(1)
+    obs = data.iloc[[0]] if backend == "pandas" else (data.head(1) if backend == "polars" else data.slice(0, 1))
     return exp, obs
 
 
@@ -51,7 +54,7 @@ def fixture(backend):
 )
 def test_remaining_families_parity(family):
     results = []
-    for backend in ("pandas", "polars"):
+    for backend in ("pandas", "polars", "arrow"):
         exp, obs = fixture(backend)
         if family == "lime":
             explanation = exp.predict_surrogate(
@@ -104,9 +107,8 @@ def test_remaining_families_parity(family):
             explanation.plot(show=False)
         assert exp.data is not None
         results.append(result.select_dtypes(include=np.number).to_numpy(dtype=float))
-    np.testing.assert_allclose(
-        results[0], results[1], rtol=1e-10, atol=1e-10, equal_nan=True
-    )
+    for result in results[1:]:
+        np.testing.assert_allclose(results[0], result, rtol=1e-10, atol=1e-10, equal_nan=True)
 
 
 def arena_payloads(backend):

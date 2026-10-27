@@ -2,7 +2,14 @@
 
 ### development
 
-...
+* accept eager Polars feature frames through Narwhals while preserving native
+  model callbacks across explanation methods; retain pandas result tables (#575)
+* propose Python >=3.10 and Narwhals >=2; validate Python 3.10–3.14 and provide a
+  locked conda-forge Polars route for Python 3.14t with the GIL disabled
+* allow pandas >=1.5.3,<4 after fixing pandas 3 copy-on-write, string dtype and
+  reshaping compatibility; keep legacy pandas coverage in CI
+* report cold/warm backend performance, memory and numerical parity separately;
+  free-threaded SHAP extension safety remains an upstream limitation
 
 ### v1.8.0 (2026-01-20)
 

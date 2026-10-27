@@ -1,5 +1,9 @@
 # Remaining-family migration and performance attribution
 
+The final review audit, pandas 3 changes and working 3.14t installation route are
+documented in [REVIEW_READINESS.md](REVIEW_READINESS.md). The dependency blocker
+described below records the earlier PyPI-only environment, not the conda-forge route.
+
 Native model feature batches now cover LIME, SHAP kernel/tree/linear wrappers,
 model surrogates, Aspect importance/triplots, Arena (all 13 plot containers,
 background SHAP resources and HTTP custom observations), and regression fairness.

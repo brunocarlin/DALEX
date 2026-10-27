@@ -43,12 +43,14 @@ objects fail validation rather than triggering dataframe conversion.
 
 This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.
 Python 3.14 is the primary development and benchmark version. CI tests 3.10–3.14
-on Linux and macOS, plus experimental Linux 3.14t with `PYTHON_GIL=0`.
-Only that experimental entry permits job failure; ordinary builds remain required.
+on Linux and macOS, plus required Linux 3.14t with `PYTHON_GIL=0`.
+The regular matrix retains pandas 2, with an additional Python 3.14/pandas 3 job.
 Scientific extensions require wheels in CI so unavailable free-threaded wheels
 produce a clear dependency-install failure instead of an unbounded source build. Maintainers should explicitly
 approve the minimum-version change before release. Pandas remains required at
-`>=1.5.3,<3` for the legacy API and output tables; pandas 3 is not supported here.
+`>=1.5.3,<4` for result/statistics tables. Pandas 3 compatibility fixes include
+copy-on-write array mutation, fairness table reshaping/string group detection and
+breakdown plot string labels. Minimum-pandas CI retains 1.5.3 coverage.
 
 No new mandatory Polars dependency is imposed on pandas-only users. Install `dalex[polars]`
 (Polars and PyArrow for pandas result materialization) for native Polars inputs.
@@ -78,9 +80,32 @@ Arena server tests behind a `sys.platform.startswith('ubuntu')` guard (standard
 Linux reports `linux`, so that guard also skips on Linux). Those skips are not
 new backend test skips and are reported rather than counted as passing coverage.
 
-Local Windows 3.14t dependency setup selected pandas 2.3.3 source and failed because
-MSVC's `vswhere.exe` was missing. This occurred before importing or testing DALEX.
-The Linux CI experiment provides separate evidence about wheel availability there.
+### Reproducing Python 3.14t
+
+Polars' PyPI runtime does not supply cp314t wheels. Its conda-forge builds do;
+`ci/free-threaded/pixi.toml` and `pixi.lock` pin that interpreter/Polars route on
+Linux and Windows. The remaining scientific packages use PyPI wheels, including
+pandas 3 (the pandas<3 PyPI releases have no matching cp314t wheel).
+
+```sh
+pixi install --locked --manifest-path python/dalex/ci/free-threaded/pixi.toml
+pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pip install -e ./python/dalex -r python/dalex/ci/requirements.txt
+# Set PYTHON_GIL=0 and EXPECT_GIL=0 in the shell before these commands.
+pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python python/dalex/ci/verify_runtime.py
+pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pytest -q -ra python/dalex/test
+```
+
+The CI job checks the interpreter build and actual GIL state after each scientific
+dependency import, then runs the entire suite with `PYTHON_GIL=0`. A separate
+`ci/probe_gil_imports.py` starts isolated interpreters with that override removed.
+SHAP 0.54.1's `shap._cext` automatically enables the GIL in that probe because it
+does not declare free-threading safety. Passing tests with the explicit override
+does not establish SHAP C-extension safety under concurrent calls. No third-party
+extension safety flags are patched. No free-threading speed claim is made.
+
+DALEX also retains legacy global NumPy RNG use, including serial permutation importance;
+simultaneous seeded explanation calls are not certified to be reproducible. See
+[review evidence](benchmarks/results/REVIEW_READINESS.md) for tested versions and limits.
 
 ## Benchmark protocol
 

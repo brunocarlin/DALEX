@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
+from concurrent.futures import ThreadPoolExecutor
 
 import dalex as dx
 from dalex._dataframe import to_numpy
@@ -33,6 +34,17 @@ def test_kernel_shap_seeded_backend_parity_and_rng_isolation(sample):
             )
             results.append(result.result)
             assert exp.data is frame
+        shared = dx.Explainer(model, data, y, model_type="regression", verbose=False)
+
+        def explain_seeded(_):
+            return shared.predict_parts(
+                data.head(1), type="shap_wrapper", N=sample, random_state=42,
+                shap_explainer_type="KernelExplainer", nsamples=24, l1_reg=0, silent=True,
+            ).result
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results.extend(pool.map(explain_seeded, range(4)))
+        assert shared.data is data
         after = np.random.get_state()
     finally:
         np.random.set_state(before)

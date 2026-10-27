@@ -60,13 +60,26 @@ class TimedPredict:
         return result
 
 
-def trial(queue, backend, values, y, weights, model, rounds):
+def trial(queue, backend, values, y, weights, model, rounds, warm_runtime=False):
     try:
         with threadpool_limits(limits=1):
             names = [f'x{i}' for i in range(values.shape[1])]
             def make_frame():
                 return (pd.DataFrame(values.copy(), columns=names) if backend == 'pandas'
                         else pl.DataFrame(values.copy(), schema=names))
+            if warm_runtime:
+                # Warm this process, not a different discarded worker. The actual
+                # timed region still creates a fresh native frame from values.
+                warm_frame = make_frame()
+                warm_explainer = dx.Explainer(
+                    model, warm_frame, y, weights=weights, predict_function=TimedPredict(),
+                    model_type='regression', verbose=False, precalculate=False,
+                )
+                warm_explainer.model_parts(
+                    N=min(len(y), 10_000), B=rounds, random_state=42,
+                    keep_raw_permutations=True, loss_function=weighted_rmse,
+                )
+                del warm_frame, warm_explainer
             gc.collect()
             predict = TimedPredict()
             with RSS() as rss:
@@ -111,14 +124,14 @@ def summary(values):
             'q75': float(np.quantile(values, .75)), 'min': min(values), 'max': max(values)}
 
 
-def run(sizes, n_features, repetitions, rounds):
+def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefix="dalex-narwhals-benchmark"):
     report = {'environment': {'python': sys.version, 'platform': platform.platform(),
               'versions': {name: importlib.metadata.version(name) for name in
                            ('dalex','numpy','pandas','polars','narwhals','scipy','scikit-learn','psutil')}},
               'method': {'repetitions': repetitions, 'rounds': rounds, 'features': n_features,
                          'seed_data': 123, 'seed_explanation': 42, 'sample_limit': 10_000,
                          'threads_estimator': 1, 'rss_poll_seconds': .002,
-                         'conversion_included': True, 'warmup_trials_per_backend': 1,
+                         'conversion_included': True, 'warmup_trials_per_backend': 1, 'warm_runtime_in_each_worker': warm_runtime,
                          'memory_note': 'Sampled process RSS, including interpreter/dependencies; peak may be underestimated.'},
               'datasets': []}
     context = mp.get_context('spawn')
@@ -135,7 +148,7 @@ def run(sizes, n_features, repetitions, rounds):
         for repeat in range(-1, repetitions):
             for backend in (('pandas','polars') if repeat % 2 == 0 else ('polars','pandas')):
                 queue = context.Queue()
-                worker = context.Process(target=trial, args=(queue,backend,values,y,weights,model,rounds))
+                worker = context.Process(target=trial, args=(queue,backend,values,y,weights,model,rounds,warm_runtime))
                 worker.start()
                 item = queue.get(timeout=600)
                 worker.join(timeout=30)
@@ -162,9 +175,9 @@ def run(sizes, n_features, repetitions, rounds):
                                    'passed_numerical_parity':True,'trials':trials,'summary':stats,
                                    'pandas_time_over_polars_time':ratios})
         print(f'{n} rows: pandas/Polars time ratios {ratios}; max parity error {max_error}', flush=True)
-    Path('dalex-narwhals-benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
+    Path(str(output_prefix)+'.json').write_text(json.dumps(report,indent=2)+'\n')
     lines = ['# Measured pandas versus Polars benchmark', '',
-             'Python '+platform.python_version()+'. Ratios above 1 favor Polars; below 1 favor pandas.', '',
+             'Runtime: '+('warm in each worker' if warm_runtime else 'cold in each fresh worker')+'. Python '+platform.python_version()+'. Ratios above 1 favor Polars; below 1 favor pandas.', '',
              '| Rows | pandas E2E s (IQR) | Polars E2E s (IQR) | E2E ratio | Adapter ratio | pandas/Polars peak RSS MiB | Max parity error |',
              '|---:|---:|---:|---:|---:|---:|---:|']
     for item in report['datasets']:
@@ -177,7 +190,7 @@ def run(sizes, n_features, repetitions, rounds):
               'One fitted estimator, identical seeds, data, weights and settings per size; alternating backend order; one excluded warm-up per backend.',
               'RSS is sampled every 2 ms in isolated processes and is a lower bound on true peak. No free-threading speed claim is made.',
               'JSON includes every trial, inference time, adapter time, absolute and incremental RSS, dispersion, and package versions.']
-    Path('dalex-narwhals-benchmark.md').write_text('\n'.join(lines)+'\n')
+    Path(str(output_prefix)+'.md').write_text('\n'.join(lines)+'\n')
 
 
 if __name__ == '__main__':
@@ -186,5 +199,7 @@ if __name__ == '__main__':
     parser.add_argument('--features', type=int, default=10)
     parser.add_argument('--repetitions', type=int, default=5)
     parser.add_argument('--rounds', type=int, default=3)
+    parser.add_argument('--warm-runtime', action='store_true')
+    parser.add_argument('--output-prefix', default='dalex-narwhals-benchmark')
     args = parser.parse_args()
-    run(args.sizes,args.features,args.repetitions,args.rounds)
+    run(args.sizes,args.features,args.repetitions,args.rounds,args.warm_runtime,args.output_prefix)

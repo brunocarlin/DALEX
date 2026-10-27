@@ -123,7 +123,7 @@ The first implementation repeatedly unwrapped and revalidated selected columns a
 converted row indices into Python lists for each permutation. The next revision
 keeps a single Narwhals wrapper and gathers using the NumPy index vector directly.
 On the 10k-row cProfile workload, wrapper calls fell from 570 to 210 across six
-explanations and cumulative shuffle time fell from 0.157s to 0.070s. Those are
+explanations and cumulative shuffle time fell from 0.130s to 0.066s. Those are
 profiled attribution measurements, not isolated end-to-end speedup claims.
 
 Most wall time in that workload is the same sklearn histogram-tree inference
@@ -132,3 +132,12 @@ validation adds backend-dependent overhead; replacing pandas cannot accelerate
 the estimator itself. Small-column permutation work also differs from large
 relational queries where Polars often helps. Use `benchmarks/profile_backend_overhead.py`
 for attribution and the isolated-process benchmark for performance claims.
+
+The cold benchmark deliberately starts each measured explanation in a fresh process.
+The first Narwhals/Polars initialization cost about 13ms in the profile, versus
+about 0.4ms on subsequent explanations in that process. The original excluded
+warm-up workers did not warm the measured worker's Python/runtime caches. Use
+`--warm-runtime` to perform an excluded explanation inside each measured worker;
+its actual timed region still includes constructing a fresh native input frame.
+Cold-start and warm-runtime results are reported separately, including memory:
+warm allocator caches may change both absolute and incremental RSS.

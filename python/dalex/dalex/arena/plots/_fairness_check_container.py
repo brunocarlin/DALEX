@@ -26,7 +26,7 @@ class FairnessCheckContainer(PlotContainer):
         exp = model.explainer
         y_hat = exp.predict(exp.data) if exp.y_hat is None else exp.y_hat
         protected = pd.Series(column_values(exp.data, variable.variable))
-        if not is_object_dtype(protected):
+        if not (is_object_dtype(protected) or isinstance(protected.dtype, (pd.StringDtype, pd.CategoricalDtype))):
             self.set_message('Select categorical variable to check fairness')
             return
 

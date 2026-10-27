@@ -89,6 +89,8 @@ jobs:
           pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pip freeze > dependency-versions.txt
       - name: Verify actual GIL state after dependency imports
         run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python python/dalex/ci/verify_runtime.py 2>&1 | tee runtime-state.log
+      - name: Record dependency automatic GIL fallback without forcing its state
+        run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python python/dalex/ci/probe_gil_imports.py
       - name: Run complete suite with GIL disabled
         run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pytest -vv -ra --timeout=120 --timeout-method=signal python/dalex/test --junitxml=test-results.xml
       - name: Save free-threaded evidence
@@ -101,6 +103,7 @@ jobs:
             dependency-versions.txt
             dependency-install.log
             runtime-state.log
+            gil-import-probe.json
 
   backend-benchmark:
     runs-on: ubuntu-latest

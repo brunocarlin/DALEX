@@ -9,7 +9,8 @@ explicit. Native-only predictors assert that callbacks keep their backend.
 ## Validation
 
 - Local Python 3.14 full suite: 128 passed / 22 inherited skips before adding two
-  additional categorical replacement tests. Both added tests pass separately.
+  categorical replacement tests and four resource/server lifecycle tests. The
+  added cases pass separately.
 - Seventeen remaining-family integration tests pass on Python 3.14 and Python
   3.12 with Narwhals 2.0.0.
 - Nineteen adapter tests pass with Python 3.10, pandas 1.5.3, NumPy 1.24.4 and
@@ -23,11 +24,11 @@ explicit. Native-only predictors assert that callbacks keep their backend.
   the historical Ubuntu platform guard. The new tests exercise Aspect and Arena
   independently instead of counting those skips as coverage.
 
-[Implementation CI](https://github.com/brunocarlin/DALEX/actions/runs/40583947744)
+[Server-readiness CI](https://github.com/brunocarlin/DALEX/actions/runs/40586786115)
 and subsequent branch runs archive JUnit results, dependency lists and cold/warm
 benchmark artifacts. Consult the run for each supported job's status/counts.
-The CI matrix has 130 test passes plus 22 inherited skips when all collected tests
-pass; the two additional helper cases account for the difference from the earlier
+The CI matrix has 134 test passes plus 22 inherited skips when all collected tests
+pass; the six additional helper/lifecycle cases account for the difference from the earlier
 local full-suite count above.
 
 ## Why the original benchmark was slower
@@ -80,3 +81,18 @@ PPS's upstream pandas<2 dependency prevents its use in the primary Python 3.14
 stack. Free-threaded Python 3.14t is still blocked by unavailable Polars runtime
 wheels; its post-dependency GIL check/tests cannot run. The Python >=3.10 proposal
 and pandas result/statistics dependencies remain documented for maintainer review.
+
+## Arena lifecycle failures found during CI
+
+The new HTTP integration test exposed an existing startup/shutdown race on macOS:
+`run_server` returned before the shutdown callback and routes were initialized.
+A first request could fail and cleanup raised missing `_stop_server`, leaving a
+non-daemon server thread alive after pytest finished. The service now signals
+readiness after route initialization, propagates startup errors and closes its
+socket on shutdown; immediate-stop/restart and startup-failure tests cover it.
+
+A separate deterministic resource test exposed producer-side event clearing that
+could lose a notification before a consumer waited. Consumers now acknowledge the
+event, and background exceptions wake callers through the existing error channel.
+CI uses per-test timeouts and verbose/fault diagnostics so a failure cannot silently
+wait for the workflow's full timeout.

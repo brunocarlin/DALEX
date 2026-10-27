@@ -47,20 +47,21 @@ class RSS:
 
 
 class TimedPredict:
-    def __init__(self):
+    def __init__(self, native=False):
         self.seconds = 0.
+        self.native = native
 
     def __call__(self, model, frame):
         start = perf_counter()
         # The identical fitted estimator consumes NumPy on both backends.
         # This explicit model boundary conversion is included in measured time.
-        values = frame if isinstance(frame, np.ndarray) else frame.to_numpy()
+        values = frame if self.native or isinstance(frame, np.ndarray) else frame.to_numpy()
         result = model.predict(values)
         self.seconds += perf_counter() - start
         return result
 
 
-def trial(queue, backend, values, y, weights, model, rounds, warm_runtime=False):
+def trial(queue, backend, values, y, weights, model, rounds, warm_runtime=False, native_predict=False, sample_limit=10_000):
     try:
         with threadpool_limits(limits=1):
             names = [f'x{i}' for i in range(values.shape[1])]
@@ -72,22 +73,22 @@ def trial(queue, backend, values, y, weights, model, rounds, warm_runtime=False)
                 # timed region still creates a fresh native frame from values.
                 warm_frame = make_frame()
                 warm_explainer = dx.Explainer(
-                    model, warm_frame, y, weights=weights, predict_function=TimedPredict(),
+                    model, warm_frame, y, weights=weights, predict_function=TimedPredict(native_predict),
                     model_type='regression', verbose=False, precalculate=False,
                 )
                 warm_explainer.model_parts(
-                    N=min(len(y), 10_000), B=rounds, random_state=42,
+                    N=min(len(y), sample_limit), B=rounds, random_state=42,
                     keep_raw_permutations=True, loss_function=weighted_rmse,
                 )
                 del warm_frame, warm_explainer
             gc.collect()
-            predict = TimedPredict()
+            predict = TimedPredict(native_predict)
             with RSS() as rss:
                 start = perf_counter()
                 frame = make_frame()
                 explainer = dx.Explainer(model, frame, y, weights=weights, predict_function=predict,
                                          model_type='regression', verbose=False, precalculate=False)
-                result = explainer.model_parts(N=min(len(y), 10_000), B=rounds,
+                result = explainer.model_parts(N=min(len(y), sample_limit), B=rounds,
                                                random_state=42, keep_raw_permutations=True,
                                                loss_function=weighted_rmse)
                 elapsed = perf_counter() - start
@@ -97,7 +98,7 @@ def trial(queue, backend, values, y, weights, model, rounds, warm_runtime=False)
             del frame, explainer
             gc.collect()
             rng = np.random.default_rng(42)
-            positions = rng.choice(len(y), min(len(y), 10_000), replace=False)
+            positions = rng.choice(len(y), min(len(y), sample_limit), replace=False)
             permutations = [rng.permutation(len(positions)) for _ in range(rounds)]
             with RSS() as rss:
                 start = perf_counter()
@@ -124,16 +125,20 @@ def summary(values):
             'q75': float(np.quantile(values, .75)), 'min': min(values), 'max': max(values)}
 
 
-def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefix="dalex-narwhals-benchmark"):
+def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefix="dalex-narwhals-benchmark", model_kind="sklearn-numpy", sample_limit=10_000):
     report = {'environment': {'python': sys.version, 'platform': platform.platform(),
               'versions': {name: importlib.metadata.version(name) for name in
                            ('dalex','numpy','pandas','polars','narwhals','scipy','scikit-learn','psutil')}},
               'method': {'repetitions': repetitions, 'rounds': rounds, 'features': n_features,
-                         'seed_data': 123, 'seed_explanation': 42, 'sample_limit': 10_000,
+                         'seed_data': 123, 'seed_explanation': 42, 'sample_limit': sample_limit,
                          'threads_estimator': 1, 'rss_poll_seconds': .002,
                          'conversion_included': True, 'warmup_trials_per_backend': 1, 'warm_runtime_in_each_worker': warm_runtime,
                          'memory_note': 'Sampled process RSS, including interpreter/dependencies; peak may be underestimated.'},
               'datasets': []}
+    report['method']['model_kind'] = model_kind
+    report['method']['training_input'] = 'numpy' if model_kind == 'sklearn-numpy' else 'polars'
+    if model_kind == 'lightgbm-native':
+        report['environment']['versions']['lightgbm'] = importlib.metadata.version('lightgbm')
     context = mp.get_context('spawn')
     for n in sizes:
         rng = np.random.default_rng(123)
@@ -141,14 +146,19 @@ def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefi
         y = values[:, :min(5,n_features)].sum(axis=1) + rng.normal(size=n)*.1
         weights = np.linspace(1, 2, n)
         with threadpool_limits(limits=1):
-            model = HistGradientBoostingRegressor(max_iter=20, random_state=42).fit(values, y)
+            training = values if model_kind == 'sklearn-numpy' else pl.DataFrame(values, schema=[f'x{i}' for i in range(n_features)])
+            if model_kind == 'lightgbm-native':
+                from lightgbm import LGBMRegressor
+                model = LGBMRegressor(n_estimators=20, n_jobs=1, random_state=42, verbosity=-1).fit(training, y)
+            else:
+                model = HistGradientBoostingRegressor(max_iter=20, random_state=42).fit(training, y)
         trials = []
         expected = None
         max_error = 0.
         for repeat in range(-1, repetitions):
             for backend in (('pandas','polars') if repeat % 2 == 0 else ('polars','pandas')):
                 queue = context.Queue()
-                worker = context.Process(target=trial, args=(queue,backend,values,y,weights,model,rounds,warm_runtime))
+                worker = context.Process(target=trial, args=(queue,backend,values,y,weights,model,rounds,warm_runtime,model_kind != 'sklearn-numpy',sample_limit))
                 worker.start()
                 item = queue.get(timeout=600)
                 worker.join(timeout=30)
@@ -177,6 +187,7 @@ def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefi
         print(f'{n} rows: pandas/Polars time ratios {ratios}; max parity error {max_error}', flush=True)
     Path(str(output_prefix)+'.json').write_text(json.dumps(report,indent=2)+'\n')
     lines = ['# Measured pandas versus Polars benchmark', '',
+             'Model path: '+model_kind+'. Training input: '+report['method']['training_input']+'.', '',
              'Runtime: '+('warm in each worker' if warm_runtime else 'cold in each fresh worker')+'. Python '+platform.python_version()+'. Ratios above 1 favor Polars; below 1 favor pandas.', '',
              '| Rows | pandas E2E s (IQR) | Polars E2E s (IQR) | E2E ratio | Adapter ratio | pandas/Polars peak RSS MiB | Max parity error |',
              '|---:|---:|---:|---:|---:|---:|---:|']
@@ -201,5 +212,9 @@ if __name__ == '__main__':
     parser.add_argument('--rounds', type=int, default=3)
     parser.add_argument('--warm-runtime', action='store_true')
     parser.add_argument('--output-prefix', default='dalex-narwhals-benchmark')
+    parser.add_argument('--model', choices=['sklearn-numpy', 'sklearn-native', 'lightgbm-native'], default='sklearn-numpy')
+    parser.add_argument('--sample-limit', type=int, default=10_000)
     args = parser.parse_args()
-    run(args.sizes,args.features,args.repetitions,args.rounds,args.warm_runtime,args.output_prefix)
+    if args.sample_limit < 1:
+        parser.error('--sample-limit must be positive')
+    run(args.sizes,args.features,args.repetitions,args.rounds,args.warm_runtime,args.output_prefix,args.model,args.sample_limit)

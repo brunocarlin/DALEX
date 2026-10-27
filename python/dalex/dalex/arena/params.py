@@ -1,3 +1,4 @@
+from .._dataframe import column_names
 from abc import ABC, abstractmethod
 import numpy as np
 import math
@@ -29,7 +30,7 @@ class ModelParam(Param):
     def __init__(self, explainer):
         self.explainer = explainer
         indexes = np.apply_along_axis(lambda x, y: not (x == y).all(), 0, to_numpy(explainer.data), explainer.y)
-        self.variables = pd.Index(explainer.data.columns)[indexes]
+        self.variables = pd.Index(column_names(explainer.data))[indexes]
     def get_label(self):
         return self.explainer.label
     def get_type(self):
@@ -120,7 +121,7 @@ class ObservationParam(Param):
     def get_row_for_model(self, model_param):
         try:
             reference = model_param.explainer.data
-            row = self.dataset.loc[[self.index]][list(reference.columns)]
+            row = self.dataset.loc[[self.index]][list(column_names(reference))]
             return row if isinstance(reference, pd.DataFrame) else frame_from_values(row.to_numpy(), reference)
         except:
             return None

@@ -41,6 +41,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Verify interpreter build and initial GIL state
         run: python python/dalex/ci/verify_runtime.py --interpreter-only
+      - name: Provide LightGBM OpenMP runtime on macOS
+        if: runner.os == 'macOS'
+        run: brew list libomp >/dev/null 2>&1 || brew install libomp
       - name: Install package and full test dependencies
         timeout-minutes: 10
         run: |
@@ -107,6 +110,10 @@ jobs:
 
   backend-benchmark:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [sklearn-numpy, sklearn-native, lightgbm-native]
     env:
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -116,12 +123,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.14'
-      - run: python -m pip install -e ./python/dalex 'pandas<3' polars pyarrow scikit-learn psutil
-      - run: python python/dalex/benchmarks/bench_variable_importance_backends.py --sizes 1000 10000 --repetitions 3 --rounds 2
-      - run: python python/dalex/benchmarks/bench_variable_importance_backends.py --sizes 1000 10000 --repetitions 3 --rounds 2 --warm-runtime --output-prefix dalex-narwhals-benchmark-warm
+      - run: python -m pip install -e ./python/dalex 'pandas<3' polars pyarrow scikit-learn 'lightgbm>=4.7,<5' psutil
+      - run: python python/dalex/benchmarks/bench_variable_importance_backends.py --model ${{ matrix.model }} --sizes 1000 10000 --repetitions 3 --rounds 2
+      - run: python python/dalex/benchmarks/bench_variable_importance_backends.py --model ${{ matrix.model }} --sizes 1000 10000 --repetitions 3 --rounds 2 --warm-runtime --output-prefix dalex-narwhals-benchmark-warm
       - uses: actions/upload-artifact@v4
         with:
-          name: dalex-narwhals-benchmark
+          name: dalex-narwhals-benchmark-${{ matrix.model }}
           path: dalex-narwhals-benchmark*
 
   minimum-pandas:

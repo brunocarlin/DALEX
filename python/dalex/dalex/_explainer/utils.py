@@ -1,3 +1,4 @@
+from .._dataframe import column_names
 # utility functions for Explainer methods
 import numpy as np
 import pandas as pd
@@ -32,7 +33,7 @@ def unpack_kwargs_lime(explainer, new_observation, **kwargs):
     if 'mode' not in explainer_dict:
         explainer_dict['mode'] = explainer.model_type
     if 'feature_names' not in explainer_dict:
-        explainer_dict['feature_names'] = explainer.data.columns
+        explainer_dict['feature_names'] = column_names(explainer.data)
     if 'data_row' not in explanation_dict:
         explanation_dict['data_row'] = new_observation
     if 'predict_fn' not in explanation_dict:
@@ -90,19 +91,19 @@ def create_surrogate_model(explainer, type, max_vars, max_depth, **kwargs):
         raise ValueError("'explainer.model_type' must be 'regression' or 'classification'")
 
     # find the most important variables
-    if max_vars is not None and max_vars < len(explainer.data.columns):
+    if max_vars is not None and max_vars < len(column_names(explainer.data)):
         # use model native feature importance if possible
         if hasattr(explainer.model, "feature_importances_"):  # scikit, xgboost, lightgbm
             # take last max_vars of the variables sorted from least to most important
             vi = explainer.model.feature_importances_
-            variables = np.asarray(explainer.data.columns)[np.argsort(vi)][-max_vars:]
+            variables = np.asarray(column_names(explainer.data))[np.argsort(vi)][-max_vars:]
         else:
             # calculate model_parts and take max_vars most important variables
             vi = explainer.model_parts(N=500, B=15)
             variables = vi.result.variable[~vi.result.variable.isin(['_baseline_', '_full_model_'])].tail(max_vars)
         X = select_columns(explainer.data, variables)
     else:
-        variables = explainer.data.columns
+        variables = column_names(explainer.data)
         X = explainer.data
 
     surrogate_model.fit(X, y_hat)

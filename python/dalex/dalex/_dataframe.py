@@ -46,6 +46,11 @@ def to_numpy(data):
     return as_eager_dataframe(data).to_numpy()
 
 
+def column_names(data):
+    """Feature labels, including backends whose .columns contains column arrays."""
+    return data.columns if isinstance(data, pd.DataFrame) else as_eager_dataframe(data).columns
+
+
 def take_rows(data, positions):
     """Take positional rows (including repeats) while preserving native backend.
 
@@ -194,7 +199,7 @@ def numeric_columns(data):
 
 def frame_from_values(values, reference, columns=None):
     """Explicit NumPy-library boundary: restore native feature batches for callbacks."""
-    names = list(reference.columns) if columns is None else list(columns)
+    names = list(column_names(reference)) if columns is None else list(columns)
     array = np.asarray(values)
     if array.ndim == 1:
         array = array.reshape(1, -1)

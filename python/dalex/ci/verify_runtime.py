@@ -7,7 +7,7 @@ import sysconfig
 
 if '--interpreter-only' not in sys.argv:
     for name in (
-        "numpy", "scipy", "pandas", "polars", "narwhals", "pyarrow", "sklearn",
+        "numpy", "scipy", "pandas", "polars", "narwhals", "pyarrow", "sklearn", "lightgbm",
         "shap", "lime.lime_tabular", "skimage", "statsmodels.api", "matplotlib", "flask", "ipywidgets", "dalex",
     ):
         module = importlib.import_module(name)

@@ -1,3 +1,4 @@
+from ..._dataframe import column_names
 import warnings
 from copy import deepcopy
 
@@ -16,12 +17,12 @@ def check_variables(variables, explainer, variable_splits):
         variables_ = variable_splits.keys()
         warnings.warn("Parameter `variable_splits` overrides `variables`. Variables taken from `variables_splits.keys()`.")
     elif variables_ is not None and isinstance(variables_, (list, np.ndarray, pd.Series)):
-        if not set(variables_).issubset(explainer.data.columns):
+        if not set(variables_).issubset(column_names(explainer.data)):
             raise ValueError('Invalid variable names')
     elif variables_ is not None and not isinstance(variables_, (list, np.ndarray, pd.Series)):
         raise TypeError("variables must be None or str or list or np.ndarray or pd.Series")
     else:
-        variables_ = explainer.data.columns
+        variables_ = column_names(explainer.data)
 
     return list(variables_)
 
@@ -32,7 +33,7 @@ def check_new_observation(new_observation, explainer):
     new_observation_ = deepcopy(new_observation)
     if isinstance(new_observation_, pd.Series):
         new_observation_ = new_observation_.to_frame().T
-        new_observation_.columns = explainer.data.columns
+        new_observation_.columns = column_names(explainer.data)
     elif isinstance(new_observation_, np.ndarray):
         if new_observation_.ndim == 1:
             # make 1D array 2D
@@ -41,14 +42,14 @@ def check_new_observation(new_observation, explainer):
             raise ValueError("Wrong new_observation dimension")
 
         new_observation_ = pd.DataFrame(new_observation_)
-        new_observation_.columns = explainer.data.columns
+        new_observation_.columns = column_names(explainer.data)
 
     elif isinstance(new_observation_, list):
         new_observation_ = pd.DataFrame(new_observation_).T
-        new_observation_.columns = explainer.data.columns
+        new_observation_.columns = column_names(explainer.data)
 
     elif isinstance(new_observation_, pd.DataFrame):
-        new_observation_.columns = explainer.data.columns
+        new_observation_.columns = column_names(explainer.data)
     else:
         raise TypeError("new_observation must be a numpy.ndarray or pandas.Series or pandas.DataFrame")
 

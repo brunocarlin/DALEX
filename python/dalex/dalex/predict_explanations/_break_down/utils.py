@@ -1,3 +1,4 @@
+from ..._dataframe import column_names
 from copy import deepcopy
 
 import numpy as np
@@ -32,7 +33,7 @@ def local_interactions(explainer,
             'adiff': np.abs(diffs_1d),
             'diff_norm': diffs_1d,
             'adiff_norm': np.abs(diffs_1d),
-            'ind1': np.arange(len(explainer.data.columns)),
+            'ind1': np.arange(len(column_names(explainer.data))),
             'ind2': None
         })
 
@@ -100,13 +101,13 @@ def local_interactions(explainer,
 
 def calculate_1d_changes(explainer,
                          new_observation):
-    yhats = np.empty(len(explainer.data.columns), dtype=object)
-    for i, col in enumerate(explainer.data.columns):
+    yhats = np.empty(len(column_names(explainer.data)), dtype=object)
+    for i, col in enumerate(column_names(explainer.data)):
         current_data = deepcopy(explainer.data)
         current_data = set_columns(current_data, {col: new_observation.loc[:, col].iloc[0]})
         yhats[i] = explainer.predict(current_data).mean()
 
-    return pd.Series(yhats, index=explainer.data.columns)
+    return pd.Series(yhats, index=column_names(explainer.data))
 
 
 def calculate_2d_changes(explainer,
@@ -119,7 +120,7 @@ def calculate_2d_changes(explainer,
     for i in range(inds.shape[0]):
         current_data = deepcopy(explainer.data)
         current_data = set_columns(current_data, {
-            explainer.data.columns[int(inds.iloc[i, j])]: new_observation.iloc[0, int(inds.iloc[i, j])]
+            column_names(explainer.data)[int(inds.iloc[i, j])]: new_observation.iloc[0, int(inds.iloc[i, j])]
             for j in (0, 1)
         })
 
@@ -127,7 +128,7 @@ def calculate_2d_changes(explainer,
         average_yhats[i] = yhats.mean()
         average_yhats_norm[i] = average_yhats[i] - diffs_1d.iloc[inds.iloc[i, 0]] - diffs_1d.iloc[inds.iloc[i, 1]]
 
-    columns = np.asarray(explainer.data.columns)
+    columns = np.asarray(column_names(explainer.data))
     average_yhats = pd.Series(average_yhats)
     average_yhats_norm = pd.Series(average_yhats_norm)
     average_yhats.index = [':'.join(pair) for pair in zip(columns[inds.iloc[:, 0]], columns[inds.iloc[:, 1]])]
@@ -184,7 +185,7 @@ def calculate_contributions_along_path(explainer,
         if open_variables.issuperset(candidates):
             # we can add this effect to out path
             for candidate in candidates:
-                current_data = set_columns(current_data, {explainer.data.columns[candidate]: new_observation.iloc[0, candidate]})
+                current_data = set_columns(current_data, {column_names(explainer.data)[candidate]: new_observation.iloc[0, candidate]})
 
             step += 1
 
@@ -193,8 +194,8 @@ def calculate_contributions_along_path(explainer,
             if keep_distributions:
                 yhats.append(
                     pd.DataFrame({
-                        'variable_name': ':'.join(np.asarray(explainer.data.columns)[candidates]),
-                        'variable': ':'.join(np.asarray(explainer.data.columns)[candidates]) +
+                        'variable_name': ':'.join(np.asarray(column_names(explainer.data))[candidates]),
+                        'variable': ':'.join(np.asarray(column_names(explainer.data))[candidates]) +
                                     '=' +
                                     nice_pair(new_observation,
                                               candidates[0],

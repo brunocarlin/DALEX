@@ -19,7 +19,7 @@ def main():
     environment = dict(os.environ)
     environment.pop("PYTHON_GIL", None)
     for name in (
-        "numpy", "scipy", "pandas", "polars", "narwhals", "pyarrow", "sklearn",
+        "numpy", "scipy", "pandas", "polars", "narwhals", "pyarrow", "sklearn", "lightgbm",
         "shap", "lime.lime_tabular", "skimage", "statsmodels.api", "matplotlib",
         "flask", "ipywidgets", "dalex",
     ):

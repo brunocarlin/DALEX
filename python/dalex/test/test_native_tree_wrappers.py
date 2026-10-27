@@ -5,7 +5,6 @@ import polars as pl
 import pytest
 
 import dalex as dx
-from dalex._dataframe import to_numpy
 
 
 @pytest.mark.parametrize("kind", ["sklearn", "lightgbm"])
@@ -54,6 +53,10 @@ def year_features(frame):
     return nw.from_native(frame).select(nw.col("when").dt.year()).to_numpy()
 
 
+def numeric_features(frame):
+    return frame.to_numpy()
+
+
 @pytest.mark.parametrize("family", ["importance", "profile"])
 def test_sklearn_native_preprocessing_pipeline(family):
     from sklearn.compose import ColumnTransformer
@@ -68,9 +71,12 @@ def test_sklearn_native_preprocessing_pipeline(family):
     })
     y = 2 * data["x"].to_numpy() + np.arange(64) * .1
     transformer = ColumnTransformer([
-        ("number", "passthrough", ["x"]),
-        ("category", OneHotEncoder(handle_unknown="ignore", sparse_output=False), ["group"]),
-        ("year", FunctionTransformer(year_features, validate=False), ["when"]),
+        # Polars 2 removed the dataframe interchange API used by sklearn 1.7's
+        # named-selector path. Positional selectors work on that supported stack
+        # too, without converting training or prediction frames to pandas.
+        ("number", FunctionTransformer(numeric_features, validate=False), [0]),
+        ("category", OneHotEncoder(handle_unknown="ignore", sparse_output=False), [1]),
+        ("year", FunctionTransformer(year_features, validate=False), [2]),
     ])
     model = make_pipeline(transformer, RandomForestRegressor(n_estimators=8, random_state=42)).fit(data, y)
     results = []

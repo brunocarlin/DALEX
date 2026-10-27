@@ -84,15 +84,18 @@ class VariableParam(Param):
             self.type = col_type
         elif self.type != col_type:
             raise Exception('The same name was used for columns with different type')
+        present = column.dropna()
+        values = present.unique().tolist()
         if self.type == 'numeric':
-            self.min = min(column.min(), math.inf if self.min is None else self.min)
-            self.max = max(column.max(), -math.inf if self.max is None else self.max)
-            if len(column.unique()) < 20:
-                self.levels = np.unique((self.levels or []) + column.unique().tolist()).tolist()
-            if not self.levels is None and len(self.levels) >= 20:
+            if not present.empty:
+                self.min = min(present.min(), math.inf if self.min is None else self.min)
+                self.max = max(present.max(), -math.inf if self.max is None else self.max)
+            if len(values) < 20:
+                self.levels = np.unique((self.levels or []) + values).tolist()
+            if len(values) >= 20 or (self.levels is not None and len(self.levels) >= 20):
                 self.levels = None
         else:
-            self.levels = np.unique((self.levels or []) + column.unique().tolist()).tolist()
+            self.levels = np.unique((self.levels or []) + values).tolist()
     def get_attributes(self):
         return {
             'type': self.type,

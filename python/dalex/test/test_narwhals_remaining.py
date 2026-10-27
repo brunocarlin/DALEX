@@ -185,6 +185,30 @@ def test_arena_native_observations_and_plots_parity():
     assert_payload_equal(arena_payloads("pandas"), arena_payloads("polars"))
 
 
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+@pytest.mark.parametrize("dtype,values,levels", [
+    ("string", ["b", None, "a"], ["a", "b"]),
+    ("category", ["b", None, "a"], ["a", "b"]),
+    ("Int64", [2, None, 1], [1, 2]),
+    ("Float64", [None, None, None], []),
+])
+def test_arena_nullable_variable_metadata(backend, dtype, values, levels):
+    from dalex.arena.params import VariableParam
+
+    frame = pd.DataFrame({"group": pd.Series(values, dtype=dtype)})
+    data = frame if backend == "pandas" else pl.from_pandas(frame)
+    variable = VariableParam("group")
+    variable.update_attributes(data["group"])
+    assert variable.levels == levels
+    if not levels:
+        assert variable.min is None and variable.max is None
+    # Metadata extraction must not fill or alter features used by the model.
+    if backend == "pandas":
+        pd.testing.assert_frame_equal(frame, pd.DataFrame({"group": pd.Series(values, dtype=dtype)}))
+    else:
+        assert data.equals(pl.from_pandas(frame))
+
+
 def test_regression_fairness_backend_parity():
     results = []
     for backend in ("pandas", "polars"):

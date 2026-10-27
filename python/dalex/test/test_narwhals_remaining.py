@@ -109,8 +109,7 @@ def test_remaining_families_parity(family):
     )
 
 
-@pytest.mark.parametrize("backend", ["pandas", "polars"])
-def test_arena_native_observations_and_plots(backend):
+def arena_payloads(backend):
     exp, obs = fixture(backend)
     arena = dx.Arena(verbose=False)
     arena.push_model(exp)
@@ -132,6 +131,7 @@ def test_arena_native_observations_and_plots(backend):
     arena.set_option("VariableImportance", "B", 2)
     arena.set_option("ShapleyValues", "B", 2)
     arena.set_option("ShapleyValues", "cpus", 1)
+    payloads = {}
     for plot in [
         "Breakdown",
         "SHAPValues",
@@ -151,9 +151,38 @@ def test_arena_native_observations_and_plots(backend):
             "variable": arena.find_param_value("variable", "x"),
             "dataset": arena.get_params("dataset")[0],
         }
+        # Arena uses NumPy's legacy global RNG. Each backend must see the same
+        # samples and paths, including work performed by background resources.
+        np.random.seed(42)
         result = arena.plots_manager.get_plot(plot, params, wait=True)
         assert result.plot_component != "Message", (plot, result.data)
+        payloads[plot] = result.data
     assert type(exp.data) is type(native)
+    return payloads
+
+
+def assert_payload_equal(left, right, path=""):
+    # pandas observations retain Arena's string index; index-free backends
+    # report positional row IDs. Only this presentation label is normalized.
+    if path == "/CeterisParibus/observation/_ids_":
+        assert str(left) == str(right)
+        return
+    if isinstance(left, dict):
+        assert left.keys() == right.keys()
+        for key in left:
+            assert_payload_equal(left[key], right[key], path + "/" + str(key))
+    elif isinstance(left, (list, tuple)):
+        assert len(left) == len(right)
+        for a, b in zip(left, right):
+            assert_payload_equal(a, b, path)
+    elif isinstance(left, (int, float, np.number)):
+        np.testing.assert_allclose(left, right, rtol=1e-10, atol=1e-10, equal_nan=True)
+    else:
+        assert left == right, (path, left, right)
+
+
+def test_arena_native_observations_and_plots_parity():
+    assert_payload_equal(arena_payloads("pandas"), arena_payloads("polars"))
 
 
 def test_regression_fairness_backend_parity():
@@ -209,8 +238,7 @@ class NativeClassifier:
         return np.column_stack([1 - p, p])
 
 
-@pytest.mark.parametrize("backend", ["pandas", "polars"])
-def test_arena_classification_and_fairness(backend):
+def arena_classifier_payloads(backend):
     rng = np.random.default_rng(123)
     frame = pd.DataFrame({"x": rng.normal(size=80), "group": np.tile(["a", "b"], 40)})
     y = (frame.x.to_numpy() + rng.normal(size=80) * 0.5 > 0).astype(int)
@@ -229,10 +257,17 @@ def test_arena_classification_and_fairness(backend):
         "model": arena.get_params("model")[0],
         "variable": arena.find_param_value("variable", "group"),
     }
+    payloads = {}
     for plot in ["ROC", "Fairness"]:
         result = arena.plots_manager.get_plot(plot, params, wait=True)
         assert result.plot_component != "Message", result.data
         assert result.data
+        payloads[plot] = result.data
+    return payloads
+
+
+def test_arena_classification_and_fairness_parity():
+    assert_payload_equal(arena_classifier_payloads("pandas"), arena_classifier_payloads("polars"))
 
 
 def test_arena_http_custom_polars_observation():

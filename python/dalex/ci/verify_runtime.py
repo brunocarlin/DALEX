@@ -8,10 +8,14 @@ import sysconfig
 if '--interpreter-only' not in sys.argv:
     for name in (
         "numpy", "scipy", "pandas", "polars", "narwhals", "pyarrow", "sklearn",
-        "shap", "lime", "statsmodels.api", "matplotlib", "flask", "ipywidgets", "dalex",
+        "shap", "lime.lime_tabular", "skimage", "statsmodels.api", "matplotlib", "flask", "ipywidgets", "dalex",
     ):
         module = importlib.import_module(name)
         print(name, getattr(module, "__version__", "(no version attribute)"))
+        if hasattr(sys, "_is_gil_enabled"):
+            enabled = sys._is_gil_enabled()
+            print("  GIL enabled after", name, ":", enabled)
+            assert enabled == (os.environ.get("EXPECT_GIL", "1") == "1"), name
 print(platform.platform(), sys.version)
 free_threaded = bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
 print("Py_GIL_DISABLED:", free_threaded)

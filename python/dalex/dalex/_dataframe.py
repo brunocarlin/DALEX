@@ -143,10 +143,7 @@ def native_observation(observation, reference, single=False):
             values = values.reshape(1, -1)
         if values.ndim != 2 or values.shape[1] != len(frame.columns):
             raise ValueError("Wrong new_observation dimension")
-        observation = nw.from_dict(
-            {name: values[:, i].tolist() for i, name in enumerate(frame.columns)},
-            backend=nw.get_native_namespace(frame),
-        ).to_native()
+        observation = frame_from_values(values, reference)
     obs = as_eager_dataframe(observation)
     if nw.get_native_namespace(obs) is not nw.get_native_namespace(frame):
         raise TypeError("new_observation must use the same dataframe backend as explainer.data")
@@ -204,7 +201,14 @@ def frame_from_values(values, reference, columns=None):
     if array.ndim != 2 or array.shape[1] != len(names):
         raise ValueError("Feature matrix must have the same ordered columns as the reference")
     if isinstance(reference, pd.DataFrame):
-        return pd.DataFrame(array, columns=names)
+        # A mixed NumPy matrix has object dtype for every column. Reconstruct
+        # each column separately so numeric features remain numeric, and restore
+        # categorical metadata expected by dataframe-aware model pipelines.
+        result = pd.DataFrame({name: array[:, i].tolist() for i, name in enumerate(names)})
+        for name in names:
+            if isinstance(reference[name].dtype, pd.CategoricalDtype):
+                result[name] = pd.Categorical(result[name], dtype=reference[name].dtype)
+        return result
     frame = as_eager_dataframe(reference)
     native = nw.from_dict(
         {name: array[:, i].tolist() for i, name in enumerate(names)},

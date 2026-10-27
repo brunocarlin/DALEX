@@ -147,7 +147,8 @@ def calculate_ratio(sub_confusion_matrix_metrics, privileged):
 
     privileged_index = np.where(df.index.values == privileged)[0][0]
     df_ratio = df / df.iloc[privileged_index, :]
-    df_ratio = df_ratio.to_numpy()
+    # pandas 3 copy-on-write exports a read-only view. Mask our own array.
+    df_ratio = df_ratio.to_numpy(copy=True)
     df_ratio[df_ratio == 0] = np.nan
     df_ratio[np.isinf(df_ratio)] = np.nan
     df_out = pd.DataFrame(df_ratio, index=df.index.values, columns=df.columns)
@@ -206,9 +207,13 @@ def _metric_ratios_2_df(fobject):
     """
 
     data = fobject.result
-    data = data.stack(dropna=False)
-    data = data.reset_index()
-    data.columns = ["subgroup", "metric", "score"]
+    # Preserve row-major order and missing scores across both pandas stack
+    # implementations (pandas 3 no longer accepts dropna=False).
+    data = pd.DataFrame({
+        "subgroup": np.repeat(data.index.to_numpy(), data.shape[1]),
+        "metric": np.tile(data.columns.to_numpy(), data.shape[0]),
+        "score": data.to_numpy().reshape(-1),
+    })
     data = data.loc[data.metric.isin(["TPR", "ACC", "PPV", "FPR", "STP"])]
     data = data.loc[data.subgroup != fobject.privileged]
     data.score -= 1

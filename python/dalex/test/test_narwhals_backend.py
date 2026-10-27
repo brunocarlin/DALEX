@@ -132,3 +132,26 @@ def test_masked_replacement_preserves_categorical_schema(backend):
         assert result.schema==data.schema
         assert result['category'].to_list()==['b','b','a']
     assert nw.from_native(data)['category'].to_list()==['a','b','a']
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_matrix_callback_bridge_preserves_mixed_feature_types(backend):
+    from dalex._dataframe import frame_from_values, native_observation
+
+    reference = pd.DataFrame({
+        "category": pd.Categorical(["a", "b"], categories=["a", "b", "unused"]),
+        "value": [1.0, 2.0],
+    })
+    if backend == "polars":
+        reference = pl.from_pandas(reference)
+    values = np.array([["b", 1.5], ["a", np.nan]], dtype=object)
+    restored = frame_from_values(values, reference)
+    assert type(restored) is type(reference)
+    if backend == "pandas":
+        assert restored.category.dtype == reference.category.dtype
+        assert pd.api.types.is_float_dtype(restored.value)
+    else:
+        assert restored.schema == reference.schema
+        observation = native_observation(["b", 1.5], reference, single=True)
+        assert observation.schema == reference.schema
+    np.testing.assert_allclose(nw.from_native(restored)["value"].to_numpy(), [1.5, np.nan])

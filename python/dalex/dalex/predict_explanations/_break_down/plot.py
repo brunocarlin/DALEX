@@ -36,8 +36,8 @@ def prepare_data_for_break_down_plot(x, baseline, max_vars, rounding_function, d
         x.iloc[0, x.columns.get_loc('cumulative')]) + "<br>Prediction: " + str(
         x.iloc[x.shape[0] - 1, x.columns.get_loc('cumulative')])
 
-    x.iloc[0, x.columns.get_loc("label_text")] = x.iloc[0, x.columns.get_loc('cumulative')]
-    x.iloc[x.shape[0] - 1, x.columns.get_loc("label_text")] = x.iloc[x.shape[0] - 1, x.columns.get_loc('cumulative')]
+    x.iloc[0, x.columns.get_loc("label_text")] = str(x.iloc[0, x.columns.get_loc('cumulative')])
+    x.iloc[x.shape[0] - 1, x.columns.get_loc("label_text")] = str(x.iloc[x.shape[0] - 1, x.columns.get_loc('cumulative')])
 
     return x
 

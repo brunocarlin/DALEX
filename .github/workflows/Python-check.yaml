@@ -14,12 +14,9 @@ defaults:
 
 jobs:
   test:
-    name: Python ${{ matrix.python }} / ${{ matrix.os }}
+    name: Python ${{ matrix.python }} / ${{ matrix.os }} / pandas ${{ matrix.pandas || '<3' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # Dependency availability for the free-threaded stack is experimental.
-    # Its failure remains visible; regular supported matrix entries remain required.
-    continue-on-error: ${{ matrix.python == '3.14t' }}
     strategy:
       fail-fast: false
       matrix:
@@ -27,10 +24,11 @@ jobs:
         python: ['3.10', '3.11', '3.12', '3.13', '3.14']
         include:
           - os: ubuntu-latest
-            python: '3.14t'
+            python: '3.14'
+            pandas: '>=3,<4'
     env:
-      PYTHON_GIL: ${{ matrix.python == '3.14t' && '0' || '1' }}
-      EXPECT_GIL: ${{ matrix.python == '3.14t' && '0' || '1' }}
+      PYTHON_GIL: '1'
+      EXPECT_GIL: '1'
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -46,7 +44,7 @@ jobs:
         timeout-minutes: 10
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install --only-binary=numpy,pandas,scipy,pyarrow,scikit-learn,statsmodels,polars,polars-runtime-32,matplotlib,scikit-image,shap -e ./python/dalex -r python/dalex/ci/requirements.txt 2>&1 | tee dependency-install.log
+          python -m pip install --only-binary=numpy,pandas,scipy,pyarrow,scikit-learn,statsmodels,polars,polars-runtime-32,matplotlib,scikit-image,shap 'pandas${{ matrix.pandas || '<3' }}' -e ./python/dalex -r python/dalex/ci/requirements.txt 2>&1 | tee dependency-install.log
           python -m pip freeze > dependency-versions.txt
       - name: Verify interpreter and GIL after dependency imports
         run: python python/dalex/ci/verify_runtime.py
@@ -56,11 +54,52 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tests-${{ matrix.python }}-${{ matrix.os }}
+          name: tests-${{ matrix.python }}-${{ matrix.os }}-pandas${{ matrix.pandas && '3' || '2' }}
           path: |
             test-results.xml
             dependency-versions.txt
             dependency-install.log
+
+  free-threaded:
+    name: Python 3.14t / ubuntu-latest / GIL disabled
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHON_GIL: '0'
+      EXPECT_GIL: '0'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      # Polars publishes cp314t binaries on conda-forge, but not PyPI.
+      - uses: prefix-dev/setup-pixi@v0.11.2
+        with:
+          pixi-version: v0.83.0
+          manifest-path: python/dalex/ci/free-threaded/pixi.toml
+          locked: true
+      - name: Verify free-threaded build before scientific imports
+        run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python python/dalex/ci/verify_runtime.py --interpreter-only
+      - name: Install package and full free-threaded test dependencies
+        run: |
+          pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pip install --only-binary=numpy,pandas,scipy,pyarrow,scikit-learn,statsmodels,matplotlib,scikit-image,shap 'pandas>=3,<4' -e ./python/dalex -r python/dalex/ci/requirements.txt 2>&1 | tee dependency-install.log
+          pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pip check
+          pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pip freeze > dependency-versions.txt
+      - name: Verify actual GIL state after dependency imports
+        run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python python/dalex/ci/verify_runtime.py 2>&1 | tee runtime-state.log
+      - name: Run complete suite with GIL disabled
+        run: pixi run --manifest-path python/dalex/ci/free-threaded/pixi.toml python -m pytest -vv -ra --timeout=120 --timeout-method=signal python/dalex/test --junitxml=test-results.xml
+      - name: Save free-threaded evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-3.14t-ubuntu-latest
+          path: |
+            test-results.xml
+            dependency-versions.txt
+            dependency-install.log
+            runtime-state.log
 
   backend-benchmark:
     runs-on: ubuntu-latest
@@ -73,7 +112,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.14'
-      - run: python -m pip install -e ./python/dalex polars pyarrow scikit-learn psutil
+      - run: python -m pip install -e ./python/dalex 'pandas<3' polars pyarrow scikit-learn psutil
       - run: python python/dalex/benchmarks/bench_variable_importance_backends.py --sizes 1000 10000 --repetitions 3 --rounds 2
       - run: python python/dalex/benchmarks/bench_variable_importance_backends.py --sizes 1000 10000 --repetitions 3 --rounds 2 --warm-runtime --output-prefix dalex-narwhals-benchmark-warm
       - uses: actions/upload-artifact@v4

@@ -81,7 +81,7 @@ def run_setup():
         install_requires=[
             'setuptools',
             'packaging',
-            'pandas>=1.5.3,<3.0.0',  # legacy result/plotting paths
+            'pandas>=1.5.3,<4.0.0',  # result/statistics paths; 3.x supplies 3.14t wheels
             'narwhals>=2.0,<3.0',
             'numpy>=1.23.5',
             'scipy>=1.6.3',

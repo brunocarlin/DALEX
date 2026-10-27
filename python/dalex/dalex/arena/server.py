@@ -11,7 +11,7 @@ def convert(o):
     if isinstance(o, np.generic): return o.item()  
     raise TypeError
 
-def start_server(arena, host, port, disable_logs):
+def start_server(arena, host, port, disable_logs, ready=None):
     from flask import Flask, request, abort, Response
     from werkzeug.serving import ThreadedWSGIServer
     from flask_cors import CORS
@@ -28,7 +28,7 @@ def start_server(arena, host, port, disable_logs):
     log.disabled = disable_logs
     app.logger.disabled = disable_logs
 
-    arena._stop_server = lambda: requests.get('http://' + host + ':' + str(port) + '/shutdown?token=' + shutdown_token)
+    arena._stop_server = lambda: requests.get('http://' + host + ':' + str(port) + '/shutdown?token=' + shutdown_token, timeout=10)
 
     @app.route("/", methods=['GET'])
     def main():
@@ -97,4 +97,9 @@ def start_server(arena, host, port, disable_logs):
         result = arena.get_param_attributes(param_type, param_label)
         return Response(json.dumps(result, default=convert), content_type='application/json')
 
-    wsgi_server.serve_forever()
+    if ready is not None:
+        ready.set()
+    try:
+        wsgi_server.serve_forever()
+    finally:
+        wsgi_server.server_close()

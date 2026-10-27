@@ -293,3 +293,26 @@ def test_arena_resource_background_error_is_reported():
     assert not resource.thread.is_alive()
     with pytest.raises(RuntimeError, match="predictor failed"):
         resource.get_result()
+
+
+def test_arena_immediate_stop_and_restart():
+    from dalex.arena.static import get_free_port
+
+    arena = dx.Arena(verbose=False)
+    port = get_free_port()
+    for _ in range(2):
+        arena.run_server(host="127.0.0.1", port=port)
+        arena.stop_server()
+        assert arena.server_thread is None
+
+
+def test_arena_startup_failure_reaches_caller(monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("cannot bind")
+
+    monkeypatch.setattr("dalex.arena.object.start_server", fail)
+    arena = dx.Arena(verbose=False)
+    with pytest.raises(RuntimeError, match="failed to start") as error:
+        arena.run_server()
+    assert isinstance(error.value.__cause__, OSError)
+    assert arena.server_thread is None

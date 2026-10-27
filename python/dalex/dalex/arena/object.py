@@ -134,8 +134,26 @@ class Arena:
         global_check_import('flask')
         global_check_import('flask_cors')
         global_check_import('requests')
-        self.server_thread = threading.Thread(target=start_server, args=(self, host, port, disable_logs))
+        ready = threading.Event()
+        startup_errors = []
+
+        def serve():
+            try:
+                start_server(self, host, port, disable_logs, ready=ready)
+            except BaseException as error:
+                # Werkzeug can raise SystemExit on bind errors. Surface it to
+                # the caller instead of silently killing the server thread.
+                startup_errors.append(error)
+                ready.set()
+
+        self.server_thread = threading.Thread(target=serve)
         self.server_thread.start()
+        if not ready.wait(timeout=10):
+            raise TimeoutError('Arena server did not become ready within 10 seconds')
+        if startup_errors:
+            self.server_thread.join()
+            self.server_thread = None
+            raise RuntimeError('Arena server failed to start') from startup_errors[0]
         if append_data:
             print(arena_url + '?append=http://' + host + ':' + str(port) + '/')
         else:
@@ -146,7 +164,9 @@ class Arena:
         if not self.server_thread:
             raise Exception('Server is not running')
         self._stop_server()
-        self.server_thread.join()
+        self.server_thread.join(timeout=10)
+        if self.server_thread.is_alive():
+            raise TimeoutError('Arena server did not stop within 10 seconds')
         self.server_thread = None
 
     def update_timestamp(self):

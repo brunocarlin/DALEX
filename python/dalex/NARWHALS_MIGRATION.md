@@ -41,7 +41,10 @@ objects fail validation rather than triggering dataframe conversion.
 
 This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.
 Python 3.14 is the primary development and benchmark version. CI tests 3.10–3.14
-on Linux and macOS, plus Linux 3.14t with `PYTHON_GIL=0`. Maintainers should explicitly
+on Linux and macOS, plus experimental Linux 3.14t with `PYTHON_GIL=0`.
+Only that experimental entry permits job failure; ordinary builds remain required.
+Scientific extensions require wheels in CI so unavailable free-threaded wheels
+produce a clear dependency-install failure instead of an unbounded source build. Maintainers should explicitly
 approve the minimum-version change before release. Pandas remains required at
 `>=1.5.3,<3` for the legacy API and output tables; pandas 3 is not supported here.
 

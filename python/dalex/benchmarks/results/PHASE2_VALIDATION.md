@@ -8,9 +8,9 @@ explicit. Native-only predictors assert that callbacks keep their backend.
 
 ## Validation
 
-- Local Python 3.14 full suite: 128 passed / 22 inherited skips before adding two
-  categorical replacement tests and four resource/server lifecycle tests. The
-  added cases pass separately.
+- Local Python 3.14.4 full suite at commit 6154f7e: 134 passed / 22 inherited
+  skips / 45 warnings in 177.26 seconds, including categorical replacement and
+  resource/server lifecycle tests.
 - Seventeen remaining-family integration tests pass on Python 3.14 and Python
   3.12 with Narwhals 2.0.0.
 - Nineteen adapter tests pass with Python 3.10, pandas 1.5.3, NumPy 1.24.4 and
@@ -24,12 +24,16 @@ explicit. Native-only predictors assert that callbacks keep their backend.
   the historical Ubuntu platform guard. The new tests exercise Aspect and Arena
   independently instead of counting those skips as coverage.
 
-[Server-readiness CI](https://github.com/brunocarlin/DALEX/actions/runs/40586786115)
-and subsequent branch runs archive JUnit results, dependency lists and cold/warm
-benchmark artifacts. Consult the run for each supported job's status/counts.
-The CI matrix has 134 test passes plus 22 inherited skips when all collected tests
-pass; the six additional helper/lifecycle cases account for the difference from the earlier
-local full-suite count above.
+[Final implementation CI](https://github.com/brunocarlin/DALEX/actions/runs/40590297658)
+archives JUnit results, dependency lists and cold/warm benchmark artifacts.
+The CI matrix collects 134 tests plus 22 inherited skips per supported job.
+All ten regular Python 3.10–3.14 Linux/macOS jobs passed (zero failures/errors),
+as did the minimum-pandas/PPS job and cold/warm benchmark job. The workflow
+concluded success; only the explicitly experimental 3.14t dependency job failed.
+`ci-phase2-summary.json` preserves per-job JUnit totals for the tested source.
+Regular 3.14 runtime checks confirmed the GIL enabled after dependency imports.
+The 3.14t initial disabled-GIL check passed, but installation blocked its
+post-dependency check and test execution; free-threaded compatibility is unverified.
 
 ## Why the original benchmark was slower
 
@@ -68,6 +72,20 @@ Polars process RSS remains higher in these experiments. The JSON/Markdown files
 include individual trials, medians/IQR, inference time and sampled absolute/
 incremental RSS; sampling every 2ms can miss peaks.
 
+Linux CI Python 3.14.9 results at commit 6154f7e use three measured trials and two
+rounds, with the same ten features and 10k sample cap. They are a separate host
+measurement, not a comparison against the Windows timings:
+
+| Rows | Cold pandas/Polars seconds | Warm pandas/Polars seconds | Warm ratio | Warm peak RSS pandas/Polars MiB |
+|---:|---:|---:|---:|---:|
+| 1k | 0.0509 / 0.0561 | 0.0503 / 0.0451 | 1.116 | 292.0 / 312.9 |
+| 10k | 0.2577 / 0.2605 | 0.2544 / 0.2450 | 1.038 | 296.2 / 317.2 |
+
+Both cold and warm comparisons have maximum parity error 0. Warm adapter-only
+ratios are 1.803 and 2.619. Small end-to-end improvements vary between runs/hosts;
+these trials do not establish a universal speedup. The committed
+`linux-python314-phase2-{cold,warm}.{json,md}` files include all trials and IQRs.
+
 `--warm-runtime` performs an excluded full explanation *inside each measured worker*.
 The timed region still constructs a new native dataframe and includes model-boundary
 conversion. Warm allocator state changes the RSS baseline; cold and warm memory
@@ -90,6 +108,10 @@ A first request could fail and cleanup raised missing `_stop_server`, leaving a
 non-daemon server thread alive after pytest finished. The service now signals
 readiness after route initialization, propagates startup errors and closes its
 socket on shutdown; immediate-stop/restart and startup-failure tests cover it.
+The macOS follow-up also exposed blocking reverse DNS in HTTPServer's default
+bind operation. Arena now binds without that lookup and uses the bound address
+as WSGI SERVER_NAME. The restart test explicitly makes reverse DNS fail, ensuring
+local startup does not depend on resolver availability.
 
 A separate deterministic resource test exposed producer-side event clearing that
 could lose a notification before a consumer waited. Consumers now acknowledge the

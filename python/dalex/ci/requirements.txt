@@ -1,0 +1,14 @@
+pytest
+polars
+pyarrow
+scikit-learn
+lime
+statsmodels
+shap
+flask
+flask-cors
+requests
+ipython
+ipywidgets
+kaleido
+psutil

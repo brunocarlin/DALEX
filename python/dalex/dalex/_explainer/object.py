@@ -292,10 +292,9 @@ class Explainer:
         if isinstance(N, int):
             # temporarly overwrite data in the Explainer (fastest way)
             # at the end of predict_parts fix the Explainer (add original data)
-            if isinstance(random_state, int):
-                np.random.seed(random_state)
             N = min(N, self.data.shape[0])
-            I = np.random.choice(np.arange(self.data.shape[0]), N, replace=False)
+            from .._random import get_random_state
+            I = get_random_state(random_state).choice(np.arange(self.data.shape[0]), N, replace=False)
             from copy import copy
             self = copy(self)
             self.data = take_rows(self.data, I)
@@ -597,10 +596,9 @@ class Explainer:
             _global_checks.global_check_import('shap', 'SHAP explanations')
             _model_parts = ShapWrapper('model_parts')
             if isinstance(N, int):
-                if isinstance(random_state, int):
-                    np.random.seed(random_state)
                 N = min(N, self.data.shape[0])
-                I = np.random.choice(np.arange(self.data.shape[0]), N, replace=False)
+                from .._random import get_random_state
+                I = get_random_state(random_state).choice(np.arange(self.data.shape[0]), N, replace=False)
                 _new_observation = take_rows(self.data, I)
             else:
                 _new_observation = self.data
@@ -698,10 +696,9 @@ class Explainer:
         )
 
         if isinstance(N, int):
-            if isinstance(random_state, int):
-                np.random.seed(random_state)
             N = min(N, self.data.shape[0])
-            I = np.random.choice(np.arange(self.data.shape[0]), N, replace=False)
+            from .._random import get_random_state
+            I = get_random_state(random_state).choice(np.arange(self.data.shape[0]), N, replace=False)
             _y = self.y[I] if self.y is not None else self.y
             _new_observation = take_rows(self.data, I)
         else:

@@ -166,7 +166,8 @@ class PredictAspectImportance(Explanation):
         _variable_groups = checks.check_variable_groups(self.variable_groups, explainer)
         
         self.prediction = explainer.predict(_new_observation)[0]
-        self.intercept = explainer.y_hat.mean()
+        self.intercept = (explainer.y_hat if explainer.y_hat is not None
+                          else explainer.predict(explainer.data)).mean()
         
         if self.type == "default":
             self.result = utils.calculate_predict_aspect_importance(

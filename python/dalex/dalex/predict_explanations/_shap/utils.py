@@ -6,6 +6,7 @@ from numpy.random import SeedSequence, default_rng
 import numpy as np
 import pandas as pd
 from ..._dataframe import set_columns, to_pandas
+from ..._random import get_random_state
 
 
 def iterate_paths(predict_function, model, data, label, new_observation, p, b, rng):
@@ -26,9 +27,10 @@ def shap(explainer,
     p = new_observation.shape[1]
 
     if processes == 1:
+        rng = get_random_state(random_state)
         result_list = [
             iterate_paths(explainer.predict_function, explainer.model, explainer.data,
-                          explainer.label, new_observation, p, b + 1, np.random)
+                          explainer.label, new_observation, p, b + 1, rng)
             for b in range(B)]
     else:
         # Create number generator for each iteration

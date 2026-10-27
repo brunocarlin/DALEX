@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from ..._dataframe import take_rows, set_columns, column_values, to_pandas
+from ..._random import get_random_state
 from copy import deepcopy
 import multiprocessing as mp
 
@@ -109,9 +110,10 @@ def calculate_shap_predict_aspect_importance(
     p = len(variable_groups)
 
     if processes == 1:
+        rng = get_random_state(random_state)
         result_list = [
             iterate_paths(explainer.predict, data_sample,
-                           new_observation, variable_groups, p, b + 1, np.random)
+                           new_observation, variable_groups, p, b + 1, rng)
             for b in range(B)]
     else:
         # create number generator for each iteration

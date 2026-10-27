@@ -2,6 +2,7 @@ from ..._dataframe import column_names
 import numpy as np
 import pandas as pd
 from ..._dataframe import native_observation
+from ..._random import get_random_state
 from copy import deepcopy
 from warnings import warn
 
@@ -86,9 +87,7 @@ def check_variable_groups(variable_groups, explainer):
 
 
 def check_random_state(random_state):
-    if random_state is not None:
-        np.random.seed(random_state)
-
+    get_random_state(random_state)
     return random_state
 
 

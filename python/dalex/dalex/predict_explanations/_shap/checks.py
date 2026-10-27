@@ -5,6 +5,7 @@ from warnings import warn
 import numpy as np
 import pandas as pd
 from ..._dataframe import native_observation
+from ..._random import get_random_state
 
 
 def check_columns_in_new_observation(new_observation,
@@ -78,7 +79,5 @@ def check_processes(processes):
 
 
 def check_random_state(random_state):
-    if random_state is not None:
-        np.random.seed(random_state)
-
+    get_random_state(random_state)
     return random_state

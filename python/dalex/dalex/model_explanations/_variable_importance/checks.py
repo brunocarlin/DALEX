@@ -1,5 +1,6 @@
 from ..._dataframe import column_names
 from warnings import warn
+from ..._random import get_random_state
 
 from .._model_performance.utils import *
 from .._variable_importance.loss_functions import *
@@ -98,9 +99,7 @@ def check_type(type):
 
 
 def check_random_state(random_state):
-    if random_state is not None:
-        np.random.seed(random_state)
-
+    get_random_state(random_state)  # validate without mutating global state
     return random_state
 
 

@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..._dataframe import take_rows, shuffle_columns
+from ..._random import get_random_state
 
 
 def calculate_variable_importance(explainer,
@@ -20,10 +21,11 @@ def calculate_variable_importance(explainer,
                                   keep_raw_permutations,
                                   random_state):
     if processes == 1:
+        rng = get_random_state(random_state)
         result = [None] * B
         for i in range(B):
             result[i] = loss_after_permutation(explainer.data, explainer.y, explainer.weights, explainer.model, explainer.predict_function,
-                                               loss_function, variables, N, np.random)
+                                               loss_function, variables, N, rng)
     else:
         # Create number generator for each iteration
         ss = SeedSequence(random_state)

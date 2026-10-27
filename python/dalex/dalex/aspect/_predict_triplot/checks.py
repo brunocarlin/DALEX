@@ -1,4 +1,5 @@
 from ..._dataframe import column_names
+from ..._random import get_random_state
 import numpy as np
 import pandas as pd
 from ..._dataframe import native_observation
@@ -7,9 +8,7 @@ from warnings import warn
 
 
 def check_random_state(random_state):
-    if random_state is not None:
-        np.random.seed(random_state)
-
+    get_random_state(random_state)
     return random_state
 
 

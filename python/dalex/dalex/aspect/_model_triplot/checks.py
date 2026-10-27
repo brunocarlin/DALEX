@@ -1,4 +1,5 @@
 from ..._dataframe import column_names
+from ..._random import get_random_state
 import numpy as np
 from warnings import warn
 
@@ -113,9 +114,7 @@ def check_type(type):
 
 
 def check_random_state(random_state):
-    if random_state is not None:
-        np.random.seed(random_state)
-
+    get_random_state(random_state)
     return random_state
 
 

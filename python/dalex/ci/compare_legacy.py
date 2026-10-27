@@ -40,6 +40,19 @@ def capture(root):
     table('cp',explainer.predict_profile(frame.iloc[[2,4]],grid_points=5,verbose=False).result)
     for kind in ('partial','accumulated','conditional'):
         table(kind,explainer.model_profile(type=kind,N=20,grid_points=5,random_state=42,verbose=False).result)
+    # Upstream still calls np.in1d, removed in NumPy 2. Use its equivalent
+    # spelling solely to execute that unmodified reference on current NumPy.
+    if not hasattr(np, 'in1d'):
+        np.in1d = np.isin
+    aspect = dx.Aspect(explainer)
+    for kind in ('default', 'shap'):
+        table('aspect_'+kind, aspect.predict_parts(
+            frame.iloc[[2]], type=kind, N=20, B=3, random_state=42,
+            variable_groups={'ab':['a','b'],'c':['c']},
+        ).result)
+    table('model_aspect', aspect.model_parts(N=20, B=3, random_state=42).result)
+    table('predict_triplot', aspect.predict_triplot(frame.iloc[[2]], N=20, B=3, random_state=42).result)
+    table('model_triplot', aspect.model_triplot(N=20, B=3, random_state=42).result)
     return result
 
 

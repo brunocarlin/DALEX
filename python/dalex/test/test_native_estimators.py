@@ -53,3 +53,28 @@ def test_polars_trained_estimator_backend_parity(estimator, family):
         setattr(model, method, original)
     for result in results[1:]:
         pd.testing.assert_frame_equal(results[0], result, check_exact=False, rtol=1e-10, atol=1e-10)
+
+
+def test_lightgbm_explicit_categorical_encoding_and_missing_values():
+    from lightgbm import LGBMRegressor
+
+    # LightGBM's native Arrow stream rejects dictionary columns. Encode with
+    # the training schema explicitly; never invent category codes inside DALEX.
+    labels = ["a", "b", None, "a"] * 20
+    original = pl.DataFrame({"category": labels, "value": np.arange(80, dtype=float)})
+    data = original.with_columns(
+        pl.col("category").cast(pl.Enum(["a", "b"])).to_physical().cast(pl.Int32),
+        pl.when(pl.col("value") == 3).then(None).otherwise(pl.col("value")).alias("value"),
+    )
+    y = np.arange(80, dtype=float) + np.array([label == "b" for label in labels]) * 5
+    model = LGBMRegressor(n_estimators=12, n_jobs=1, verbosity=-1, random_state=42).fit(
+        data, y, categorical_feature=["category"],
+    )
+    results = []
+    schema = data.schema
+    for frame in (data.to_pandas(), data):
+        exp = dx.Explainer(model, frame, y, verbose=False, label="model")
+        assert exp.data is frame
+        results.append(exp.model_parts(N=40, B=3, random_state=42).result)
+    pd.testing.assert_frame_equal(*results, check_exact=False, atol=1e-10, rtol=1e-10)
+    assert data.schema == schema and original["category"].to_list() == labels

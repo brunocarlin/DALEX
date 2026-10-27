@@ -96,6 +96,9 @@ Process RSS is sampled every 2ms and reports absolute peak and increase; samplin
 can miss short-lived allocations. These are observational results, not guarantees.
 
 Outputs: `dalex-narwhals-benchmark.json` and `dalex-narwhals-benchmark.md`.
+Excluded warm-up trials use fresh processes and warm OS caches rather than persistent worker state.
 Defaults: 1k, 10k, 100k rows, ten float64 features, five measured trials, three
 permutation rounds, at most 10k sampled rows. CI uses two sizes and three trials.
 Ratios above one favor Polars; regressions below one must also be reported.
+
+Measured results and validation details: [benchmarks/results/VALIDATION.md](benchmarks/results/VALIDATION.md).

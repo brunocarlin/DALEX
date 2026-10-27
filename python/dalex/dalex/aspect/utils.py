@@ -55,7 +55,8 @@ def calculate_cat_num_assoc_matrix(data, categorical_variables, numerical_variab
 
 def calculate_assoc_matrix(data, corr_method):
     # Statistical correlation/contingency boundary. Prediction batches stay native.
-    data = to_pandas(data)
+    if not isinstance(data, pd.DataFrame):
+        data = to_pandas(data)
     corr_matrix = abs(data.corr(corr_method, numeric_only=True)) # get submatrix for only numerical variables
     numerical_variables = corr_matrix.columns 
     categorical_variables = list(set(data.columns) - set(numerical_variables))

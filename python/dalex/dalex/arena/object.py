@@ -197,7 +197,7 @@ class Arena:
 
         Parameters
         -----------
-        observations : pandas.DataFrame
+        observations : pandas.DataFrame or eager Polars DataFrame
             Data frame of observations to be explained using instance level plots.
             Label for each observation is taken from row name.
         precalculate : bool or None
@@ -206,7 +206,8 @@ class Arena:
         """
         # Observation labels/attributes are presentation metadata. Prediction
         # batches are restored to the model's native backend in ObservationParam.
-        observations = to_pandas(observations)
+        if not isinstance(observations, DataFrame):
+            observations = to_pandas(observations)
         if len(observations.index.names) != 1:
             raise Exception('Observations argument need to have only one index')
         if not observations.index.is_unique:
@@ -235,7 +236,7 @@ class Arena:
 
         Parameters
         -----------
-        dataset : pandas.DataFrame
+        dataset : pandas.DataFrame or eager Polars DataFrame
             Data frame to be visualised using EDA plots. This
             dataset should contain target variable.
         target : str
@@ -246,7 +247,8 @@ class Arena:
             Overrides constructor `precalculate` parameter when it is not None.
             If true, then only plots using this model will be precalculated.
         """
-        dataset = to_pandas(dataset)  # Arena EDA/statistics table boundary
+        if not isinstance(dataset, DataFrame):
+            dataset = to_pandas(dataset)  # Arena EDA/statistics table boundary
         if len(dataset.columns.names) != 1:
             raise Exception('Dataset argument need to have only one level column names')
         precalculate = self.precalculate if precalculate is None else bool(precalculate)

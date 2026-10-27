@@ -98,7 +98,7 @@ class ShapWrapper(Explanation):
             )
 
         self.result = self.shap_explainer.shap_values(to_numpy(new_observation), **kwargs)
-        self.new_observation = to_pandas(new_observation)
+        self.new_observation = new_observation if isinstance(new_observation, pd.DataFrame) else to_pandas(new_observation)
         self.shap_explainer_type = shap_explainer_type
 
     def plot(self, **kwargs):

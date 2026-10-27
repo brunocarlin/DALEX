@@ -22,7 +22,8 @@ all DALEX integrations support Polars.
 | Aspect importance/triplots | yes | correlation/contingency statistics and result tables |
 | Arena | yes | labels, attributes, EDA and serialized plot tables |
 
-Classification and regression fairness have cross-backend integration coverage. The optional PPS dependence method still depends on ppscore and its pandas compatibility.
+Classification and regression fairness have cross-backend integration coverage. The optional PPS dependence method is tested separately with Python 3.10/pandas 1.5/ppscore 1.3.
+Its upstream pandas<2 bound and pkg_resources requirement prevent support in the primary 3.14 environment.
 Deep/Gradient SHAP matrix boundaries are implemented, but TensorFlow/PyTorch integration
 has not been certified by this test matrix. Other Narwhals eager backends may validate
 but have not been certified. Lazy inputs are rejected without collecting them.
@@ -102,7 +103,7 @@ Defaults: 1k, 10k, 100k rows, ten float64 features, five measured trials, three
 permutation rounds, at most 10k sampled rows. CI uses two sizes and three trials.
 Ratios above one favor Polars; regressions below one must also be reported.
 
-Measured results and validation details: [benchmarks/results/VALIDATION.md](benchmarks/results/VALIDATION.md).
+Measured results and validation details: [benchmarks/results/PHASE2_VALIDATION.md](benchmarks/results/PHASE2_VALIDATION.md).
 
 ## Remaining-family migration and performance attribution
 

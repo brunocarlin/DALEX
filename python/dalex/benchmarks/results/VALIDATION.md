@@ -1,4 +1,6 @@
-# Validation evidence
+# Initial migration validation evidence
+
+This is the historical first-stage report. See [PHASE2_VALIDATION.md](PHASE2_VALIDATION.md) for the remaining-family migration and cold/warm attribution.
 
 Measured implementation: `0cbe570e5013cdd0b931c17a36243eab5b266021`.
 The result files name their measured source revisions; documentation-only commits

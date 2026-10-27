@@ -130,13 +130,13 @@ def native_observation(observation, reference, single=False):
     """Validate observations for a non-pandas explainer without collecting lazy data."""
     frame = as_eager_dataframe(reference)
     if isinstance(observation, (list, np.ndarray, pd.Series)):
-        values = np.asarray(observation)
+        values = np.asarray(observation, dtype=object) if isinstance(observation, (list, pd.Series)) else np.asarray(observation)
         if values.ndim == 1:
             values = values.reshape(1, -1)
         if values.ndim != 2 or values.shape[1] != len(frame.columns):
             raise ValueError("Wrong new_observation dimension")
         observation = nw.from_dict(
-            {name: values[:, i] for i, name in enumerate(frame.columns)},
+            {name: values[:, i].tolist() for i, name in enumerate(frame.columns)},
             backend=nw.get_native_namespace(frame),
         ).to_native()
     obs = as_eager_dataframe(observation)
@@ -169,3 +169,14 @@ def require_pandas(data, method):
             f"{method} currently requires pandas features; native backend support is pending. "
             "Use predict_parts(type='shap') for native DALEX Shapley values."
         )
+
+
+class NativeResidualFunction:
+    """Preserve the three-argument callback contract and normalize native vectors."""
+
+    def __init__(self, function):
+        self.function = function
+
+    def __call__(self, model, data, y):
+        result = self.function(model, data, y)
+        return result if isinstance(result, np.ndarray) else as_numpy_vector(result, "residuals")

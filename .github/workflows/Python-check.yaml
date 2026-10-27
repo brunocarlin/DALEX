@@ -40,7 +40,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
+      - name: Verify interpreter build and initial GIL state
+        run: python python/dalex/ci/verify_runtime.py --interpreter-only
       - name: Install package and full test dependencies
+        timeout-minutes: 10
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install --only-binary=numpy,pandas,scipy,pyarrow,scikit-learn,statsmodels,polars-runtime-32,matplotlib,scikit-image,shap -e ./python/dalex -r python/dalex/ci/requirements.txt 2>&1 | tee dependency-install.log

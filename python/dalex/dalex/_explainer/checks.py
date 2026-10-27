@@ -4,7 +4,7 @@ import pandas as pd
 import warnings
 from copy import deepcopy
 
-from .._dataframe import as_eager_dataframe, as_numpy_vector, take_rows, to_numpy, NativePredictFunction
+from .._dataframe import as_eager_dataframe, as_numpy_vector, take_rows, to_numpy, NativePredictFunction, NativeResidualFunction
 from .helper import verbose_cat, is_y_in_data, get_model_info
 from .yhat import get_predict_function_and_model_type
 
@@ -264,6 +264,9 @@ def check_residual_function(residual_function, predict_function, model, data, y,
         verbose_cat("  -> residual function : " + str(residual_function), verbose=verbose)
         model_info['residual_function_default'] = False
 
+    if data is not None and not isinstance(data, pd.DataFrame):
+        residual_function = NativeResidualFunction(residual_function)
+
     # if data is specified then we may test residual_function
     residuals = None
     if data is not None and y is not None and (verbose or precalculate):
@@ -315,7 +318,7 @@ def check_if_local_and_lambda(to_dump):
     import re
 
     pred_func = str(getattr(to_dump.predict_function, "function", to_dump.predict_function))
-    res_func = str(to_dump.residual_function)
+    res_func = str(getattr(to_dump.residual_function, "function", to_dump.residual_function))
 
     is_local = "<locals>"
     is_lambda = "<lambda>"

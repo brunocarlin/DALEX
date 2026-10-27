@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import numpy as np
 import pandas as pd
-from ..._dataframe import native_observation
+from ..._dataframe import native_observation, as_numpy_vector
 
 from . import utils
 
@@ -72,7 +72,7 @@ def check_y(y):
     if y is not None and isinstance(y, pd.Series):
         y = np.array(y)
     elif y is not None and not isinstance(y, np.ndarray):
-        raise TypeError("y must be numpy.ndarray or pandas.Series")
+        y = as_numpy_vector(y, "y")
 
     return y
 

@@ -201,3 +201,20 @@ def test_numpy_observation_uses_reference_backend():
     a = explainer.predict_parts(np.array([1., 3.]), N=None)
     b = explainer.predict_parts(data.head(1), N=None)
     pd.testing.assert_frame_equal(a.result, b.result)
+
+
+def native_residual(model, data, y):
+    assert isinstance(data, pl.DataFrame)
+    return pl.Series(y)-model.predict(data)
+
+
+def test_native_residual_callback_and_serialization():
+    data = pl.DataFrame({"x": [1.,2.,3.], "z": [3.,2.,1.]})
+    y = pl.Series("y", [1.,2.,3.])
+    explainer = dx.Explainer(SeriesRegressor(), data, y, residual_function=native_residual, model_type="regression", verbose=False)
+    assert isinstance(explainer.residuals, np.ndarray)
+    np.testing.assert_allclose(explainer.residual(data,y),explainer.residuals)
+    restored = dx.Explainer.loads(explainer.dumps())
+    assert isinstance(restored.data, pl.DataFrame)
+    np.testing.assert_allclose(restored.predict(data), explainer.predict(data))
+    np.testing.assert_allclose(restored.residual(data,y), explainer.residuals)

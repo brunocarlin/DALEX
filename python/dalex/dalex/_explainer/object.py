@@ -1,5 +1,6 @@
 from .._dataframe import require_pandas
 import numpy as np
+import pandas as pd
 
 from dalex.model_explanations import ModelPerformance, VariableImportance, \
     AggregatedProfiles, ResidualDiagnostics
@@ -11,7 +12,7 @@ from . import checks
 from . import utils
 from . import helper
 from .. import _global_checks
-from .._dataframe import take_rows
+from .._dataframe import take_rows, as_numpy_vector
 
 
 class Explainer:
@@ -208,6 +209,8 @@ class Explainer:
 
         checks.check_method_data(data)
 
+        if self.data is not None and not isinstance(self.data, pd.DataFrame) and not isinstance(y, np.ndarray):
+            y = as_numpy_vector(y, "y")
         return self.residual_function(self.model, data, y)
 
     def predict_parts(self,

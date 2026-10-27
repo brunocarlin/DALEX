@@ -40,6 +40,18 @@ def capture(root):
     table('cp',explainer.predict_profile(frame.iloc[[2,4]],grid_points=5,verbose=False).result)
     for kind in ('partial','accumulated','conditional'):
         table(kind,explainer.model_profile(type=kind,N=20,grid_points=5,random_state=42,verbose=False).result)
+    class NonlinearModel:
+        def predict(self, data):
+            values = data.to_numpy() if hasattr(data, 'to_numpy') else np.asarray(data)
+            return values[:,0]*values[:,1] + np.sin(values[:,2]*values[:,3]) + np.cos(values[:,4])*values[:,5]**2
+    kernel_data = pd.DataFrame(rng.normal(size=(40,6)), columns=[f'k{i}' for i in range(6)])
+    kernel_model = NonlinearModel()
+    kernel_exp = dx.Explainer(kernel_model, kernel_data, kernel_model.predict(kernel_data), verbose=False)
+    kernel = kernel_exp.predict_parts(
+        kernel_data.iloc[[0]], type='shap_wrapper', N=20, random_state=42,
+        shap_explainer_type='KernelExplainer', nsamples=24, l1_reg=0, silent=True,
+    )
+    table('kernel_wrapper', pd.DataFrame(kernel.result))
     # Upstream still calls np.in1d, removed in NumPy 2. Use its equivalent
     # spelling solely to execute that unmodified reference on current NumPy.
     if not hasattr(np, 'in1d'):

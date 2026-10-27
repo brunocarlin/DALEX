@@ -2,6 +2,8 @@ from ..._dataframe import to_numpy, to_pandas, native_observation, frame_from_va
 import pandas as pd
 import numpy as np
 import sys
+from contextlib import nullcontext
+from ..._random import get_random_state, numpy_state_scope
 from . import checks
 
 
@@ -56,6 +58,7 @@ class ShapWrapper(Explanation):
         self.new_observation = None
         self.shap_explainer_type = None
         self.expected_value = None
+        self._rng_state = None
 
     def fit(self,
             explainer,
@@ -117,7 +120,12 @@ class ShapWrapper(Explanation):
                 lambda x: explainer.predict(frame_from_values(x, explainer.data)), background
             )
 
-        self.result = self.shap_explainer.shap_values(model_matrix(new_observation, explainer.model, shap_explainer_type), **kwargs)
+        state = self._rng_state
+        if state is None and shap_explainer_type == "GradientExplainer" and kwargs.get("rseed") is not None:
+            state = get_random_state(kwargs["rseed"]).get_state()
+        rng_scope = numpy_state_scope(state) if shap_explainer_type in ("KernelExplainer", "GradientExplainer") else nullcontext()
+        with rng_scope:
+            self.result = self.shap_explainer.shap_values(model_matrix(new_observation, explainer.model, shap_explainer_type), **kwargs)
         self.expected_value = getattr(self.shap_explainer, "expected_value", None)
         if self.expected_value is None:
             # GradientExplainer does not expose expected_value, but force plots

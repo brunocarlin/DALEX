@@ -289,12 +289,20 @@ class Explainer:
         types = ('break_down_interactions', 'break_down', 'shap', 'shap_wrapper')
         _type = checks.check_method_type(type, types)
 
+        _sampling_state = None
+        if _type == 'shap_wrapper' and random_state is not None:
+            from .._random import get_random_state
+            _sampling_state = get_random_state(random_state).get_state()
+
         if isinstance(N, int):
             # temporarly overwrite data in the Explainer (fastest way)
             # at the end of predict_parts fix the Explainer (add original data)
             N = min(N, self.data.shape[0])
             from .._random import get_random_state
-            I = get_random_state(random_state).choice(np.arange(self.data.shape[0]), N, replace=False)
+            rng = get_random_state(random_state)
+            I = rng.choice(np.arange(self.data.shape[0]), N, replace=False)
+            if _type == 'shap_wrapper' and random_state is not None:
+                _sampling_state = rng.get_state()
             from copy import copy
             self = copy(self)
             self.data = take_rows(self.data, I)
@@ -317,6 +325,7 @@ class Explainer:
         elif _type == 'shap_wrapper':
             _global_checks.global_check_import('shap', 'SHAP explanations')
             _predict_parts = ShapWrapper('predict_parts')
+            _predict_parts._rng_state = _sampling_state
         else:
             raise TypeError("Wrong type parameter.")
 
@@ -595,10 +604,16 @@ class Explainer:
         elif _type == 'shap_wrapper':
             _global_checks.global_check_import('shap', 'SHAP explanations')
             _model_parts = ShapWrapper('model_parts')
+            if random_state is not None:
+                from .._random import get_random_state
+                _model_parts._rng_state = get_random_state(random_state).get_state()
             if isinstance(N, int):
                 N = min(N, self.data.shape[0])
                 from .._random import get_random_state
-                I = get_random_state(random_state).choice(np.arange(self.data.shape[0]), N, replace=False)
+                rng = get_random_state(random_state)
+                I = rng.choice(np.arange(self.data.shape[0]), N, replace=False)
+                if random_state is not None:
+                    _model_parts._rng_state = rng.get_state()
                 _new_observation = take_rows(self.data, I)
             else:
                 _new_observation = self.data

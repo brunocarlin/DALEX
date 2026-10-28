@@ -107,6 +107,8 @@ def weighted_rmse(y, prediction, sample_weight=None):
 
 def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefix="dalex-narwhals-benchmark", model_kind="sklearn-numpy", sample_limit=10_000):
     report = {'environment': {'python': sys.version, 'platform': platform.platform(),
+              'polars_thread_pool_size': pl.thread_pool_size(),
+              'gil_enabled': getattr(sys, '_is_gil_enabled', lambda: None)(),
               'versions': {name: importlib.metadata.version(name) for name in
                            ('dalex','numpy','pandas','polars','narwhals','scipy','scikit-learn','psutil')}},
               'method': {'repetitions': repetitions, 'rounds': rounds, 'features': n_features,

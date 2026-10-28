@@ -12,5 +12,6 @@ flask-cors
 requests
 ipython
 ipywidgets
+anywidget>=0.9.13
 kaleido
 psutil

@@ -223,10 +223,13 @@ jobs:
           python -m pip freeze > minimum-versions.txt
           python -m pytest -vv -ra --timeout=120 --timeout-method=thread python/dalex/test --junitxml=minimum-pandas.xml
       - name: Validate optional PPS in its compatible legacy dependency environment
+        env:
+          DALEX_TEST_PPS: '1'
         run: |
           python -m pip install 'setuptools<81' wheel 'scikit-learn<1.7'
           python -m pip install --no-build-isolation ppscore==1.3.0
           python python/dalex/ci/check_pps_backends.py
+          python -m pytest -vv -ra --timeout=120 --timeout-method=thread python/dalex/test/test_aspect.py --junitxml=legacy-pps-tests.xml
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -235,3 +238,4 @@ jobs:
             minimum-pandas.xml
             minimum-versions.txt
             pps-backend-parity.json
+            legacy-pps-tests.xml

@@ -329,6 +329,7 @@ class ModelTriplot(Explanation):
 
         if widget:
             _global_checks.global_check_import('ipywidgets', 'Model Triplot')
+            _global_checks.global_check_import('anywidget', 'Model Triplot')
             from ipywidgets import HBox, Layout
             fig = go.FigureWidget(fig, layout={"autosize": True, "hoverdistance": 100})
             original_bar_colors = deepcopy([fig.data[0]["marker"]["color"]] * m)

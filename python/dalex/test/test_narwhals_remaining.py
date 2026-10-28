@@ -220,6 +220,22 @@ def test_regression_fairness_backend_parity():
     pd.testing.assert_frame_equal(*results)
 
 
+@pytest.mark.parametrize("backend", ["pandas", "polars", "arrow"])
+@pytest.mark.parametrize("family", ["predict", "model"])
+def test_native_triplot_widgets_with_current_plotly(backend, family):
+    from ipywidgets import HBox
+
+    exp, observation = fixture(backend)
+    aspect = dx.Aspect(exp)
+    explanation = (aspect.predict_triplot(observation, N=20, B=2, random_state=42)
+                   if family == "predict" else aspect.model_triplot(N=20, B=2, random_state=42))
+    widget = explanation.plot(widget=True, show=False)
+    assert isinstance(widget, HBox)
+    for child in widget.children:
+        child.close()
+    widget.close()
+
+
 @pytest.mark.parametrize("kind", ["TreeExplainer", "LinearExplainer"])
 def test_model_specific_shap_backend_parity(kind):
     from sklearn.ensemble import RandomForestRegressor

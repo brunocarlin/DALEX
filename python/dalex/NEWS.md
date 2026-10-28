@@ -2,6 +2,11 @@
 
 ### development
 
+* preserve missing numeric interventions in partial/conditional profiles and
+  reject unordered missing numeric grids for accumulated effects explicitly
+* accept native fairness membership/mitigation vectors and restore legacy Arena
+  coverage that was disabled by an unreachable platform guard
+* include `anywidget` in the optional full dependencies for Plotly 6+ triplots
 * extend native feature coverage to Arrow labels and test Polars-trained sklearn
   and LightGBM 4.7 regression/classification models, preprocessing and Tree SHAP
 * isolate explicit explanation seeds, including sampled Kernel SHAP, and test

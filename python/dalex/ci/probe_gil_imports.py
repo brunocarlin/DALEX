@@ -21,7 +21,7 @@ def main():
     for name in (
         "numpy", "scipy", "pandas", "polars", "narwhals", "pyarrow", "sklearn", "lightgbm",
         "shap", "lime.lime_tabular", "skimage", "statsmodels.api", "matplotlib",
-        "flask", "ipywidgets", "dalex",
+        "flask", "ipywidgets", "anywidget", "dalex",
     ):
         code = (
             "import importlib,json,sys,sysconfig; "

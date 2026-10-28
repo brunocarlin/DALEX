@@ -222,26 +222,28 @@ def test_regression_fairness_backend_parity():
 
 @pytest.mark.parametrize("backend", ["pandas", "polars", "arrow"])
 @pytest.mark.parametrize("family", ["predict", "model"])
-def test_native_triplot_widgets_with_current_plotly(backend, family, monkeypatch):
+@pytest.mark.parametrize("constant", [False, True])
+def test_native_triplot_widgets_with_current_plotly(backend, family, constant, monkeypatch):
     from ipywidgets import HBox
     import plotly.graph_objects as go
 
-    render = go.Figure.full_figure_for_development
-    rendered = []
-
     def tracked(figure, *args, **kwargs):
-        rendered.append(figure)
-        return render(figure, *args, **kwargs)
+        raise AssertionError("Triplot construction must not invoke an external renderer")
 
     monkeypatch.setattr(go.Figure, "full_figure_for_development", tracked)
 
     exp, observation = fixture(backend)
+    if constant:
+        def predict(model, frame):
+            return np.zeros(frame.shape[0])
+        exp = dx.Explainer(exp.model, exp.data, np.zeros(exp.data.shape[0]),
+                           predict_function=predict, model_type="regression", verbose=False)
     aspect = dx.Aspect(exp)
     explanation = (aspect.predict_triplot(observation, N=20, B=2, random_state=42)
                    if family == "predict" else aspect.model_triplot(N=20, B=2, random_state=42))
     widget = explanation.plot(widget=True, show=False)
     assert isinstance(widget, HBox)
-    assert len(rendered) == 1
+    assert all(len(trace.x) == len(trace.y) for trace in widget.children[0].data)
     for child in widget.children:
         child.close()
     widget.close()

@@ -267,15 +267,13 @@ def _add_between_points(
 
 def _add_points_on_dendrogram_traces(fig):
     k = len(fig.data)
-    # Resolving default ranges starts the external renderer. Read all axes
-    # from one result instead of rendering this unchanged figure three times.
-    rendered = fig.full_figure_for_development(warn=False)
-    range_x2 = rendered.layout.xaxis2.range
-    range_x2_len = range_x2[1] - range_x2[0]
-    range_x3 = rendered.layout.xaxis3.range
-    range_x3_len = range_x3[1] - range_x3[0]
-    range_y = rendered.layout.yaxis.range
-    range_y_len = range_y[1] - range_y[0]
+    # Only hover-point density depends on these spans. All added points remain
+    # on existing straight segments, so resolving browser defaults is unnecessary.
+    range_x2_len = _global_utils.finite_range_length(fig.layout.xaxis2.range)
+    range_x3_len = _global_utils.finite_range_length(fig.layout.xaxis3.range)
+    range_y_len = _global_utils.finite_range_length([
+        value for trace in fig.data if trace.y is not None for value in trace.y
+    ])
     middle_point = [None] * k
     for i in range(1, k):
         if i < ((k - 1) / 2 + 1):

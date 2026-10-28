@@ -281,11 +281,14 @@ def _add_between_points(
 
 def _add_points_on_dendrogram_traces(fig):
     k = len(fig.data)
-    range_x2 = fig.full_figure_for_development(warn=False).layout.xaxis2.range
+    # Resolving default ranges starts the external renderer. Read all axes
+    # from one result instead of rendering this unchanged figure three times.
+    rendered = fig.full_figure_for_development(warn=False)
+    range_x2 = rendered.layout.xaxis2.range
     range_x2_len = range_x2[1] - range_x2[0]
-    range_x3 = fig.full_figure_for_development(warn=False).layout.xaxis3.range
+    range_x3 = rendered.layout.xaxis3.range
     range_x3_len = range_x3[1] - range_x3[0]
-    range_y = fig.full_figure_for_development(warn=False).layout.yaxis.range
+    range_y = rendered.layout.yaxis.range
     range_y_len = range_y[1] - range_y[0]
     middle_point = [None] * k
     for i in range(1, k):

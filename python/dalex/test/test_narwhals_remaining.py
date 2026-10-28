@@ -222,8 +222,18 @@ def test_regression_fairness_backend_parity():
 
 @pytest.mark.parametrize("backend", ["pandas", "polars", "arrow"])
 @pytest.mark.parametrize("family", ["predict", "model"])
-def test_native_triplot_widgets_with_current_plotly(backend, family):
+def test_native_triplot_widgets_with_current_plotly(backend, family, monkeypatch):
     from ipywidgets import HBox
+    import plotly.graph_objects as go
+
+    render = go.Figure.full_figure_for_development
+    rendered = []
+
+    def tracked(figure, *args, **kwargs):
+        rendered.append(figure)
+        return render(figure, *args, **kwargs)
+
+    monkeypatch.setattr(go.Figure, "full_figure_for_development", tracked)
 
     exp, observation = fixture(backend)
     aspect = dx.Aspect(exp)
@@ -231,6 +241,7 @@ def test_native_triplot_widgets_with_current_plotly(backend, family):
                    if family == "predict" else aspect.model_triplot(N=20, B=2, random_state=42))
     widget = explanation.plot(widget=True, show=False)
     assert isinstance(widget, HBox)
+    assert len(rendered) == 1
     for child in widget.children:
         child.close()
     widget.close()

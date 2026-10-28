@@ -465,4 +465,3 @@ properly updated and bars in `plot` are sorted by `abs(contribution)`
   replacements. Restore pandas 1.5 accumulated/conditional profile support.
 - Expand categorical/missing-value sklearn and LightGBM integration coverage;
   run the complete minimum-version suite and add Windows Python 3.14 CI.
-

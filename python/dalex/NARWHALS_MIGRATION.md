@@ -217,4 +217,3 @@ can learn Polars `None` as a level while treating pandas categorical NaN as
 missing. Tests include explicit native preprocessing to give these values a
 consistent model contract, followed by an explicit NumPy estimator boundary
 for compatibility with older sklearn ColumnTransformer versions.
-

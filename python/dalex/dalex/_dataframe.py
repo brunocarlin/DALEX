@@ -213,7 +213,9 @@ def set_columns(data, values, *, scalar=False):
         return result
     frame = as_eager_dataframe(data)
     backend = nw.get_native_namespace(frame)
-    schema = frame.schema
+    # Only inspect columns being replaced. Collecting the entire portable schema
+    # for each Shapley/break-down step creates quadratic work on wide frames.
+    schema = {name: frame.get_column(name).dtype for name in values}
     expressions = []
     for name, value in values.items():
         dtype = schema[name]
@@ -325,10 +327,11 @@ def frame_from_values(values, reference, columns=None):
         return result
     frame = as_eager_dataframe(reference)
     backend = nw.get_native_namespace(frame)
+    schema = {name: frame.get_column(name).dtype for name in names}
     columns_data = {}
     casts = []
     for i, name in enumerate(names):
-        dtype = frame.schema[name]
+        dtype = schema[name]
         values = array[:, i].tolist()
         if isinstance(dtype, (nw.Datetime, nw.Duration)):
             columns_data[name] = nw.new_series(name, _temporal_counts(values, dtype), dtype=nw.Int64, backend=backend).cast(dtype).to_native()
@@ -340,4 +343,4 @@ def frame_from_values(values, reference, columns=None):
                 casts.append(nw.col(name).cast(dtype))
     native = nw.from_dict(columns_data, backend=backend)
     result = native.with_columns(casts).to_native() if casts else native.to_native()
-    return _restore_native_fields(result, reference, names, frame.schema)
+    return _restore_native_fields(result, reference, names, schema)

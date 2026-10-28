@@ -65,9 +65,15 @@ def worker(queue, backend, values, y, model, family, sample, rounds):
 
 
 def main():
+    import hashlib
+    import pickle
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", choices=["sklearn", "lightgbm"], required=True)
     parser.add_argument("--rows", type=int, default=10000)
+    parser.add_argument("--features", type=int, default=10)
+    parser.add_argument("--model-file", help="Reuse one fitted model across source revisions; create if absent")
+    parser.add_argument("--source-revision", default="unspecified")
     parser.add_argument("--sample", type=int, default=1000)
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--rounds", type=int, default=3)
@@ -75,19 +81,27 @@ def main():
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     rng = np.random.default_rng(123)
-    values = rng.normal(size=(args.rows, 10))
-    original = pl.DataFrame(values, schema=[f"x{i}" for i in range(10)])
+    values = rng.normal(size=(args.rows, args.features))
+    original = pl.DataFrame(values, schema=[f"x{i}" for i in range(args.features)])
     y = values[:, :5].sum(axis=1) + rng.normal(size=args.rows)*.1
     with threadpool_limits(limits=1):
-        if args.model == "lightgbm":
+        if args.model_file and Path(args.model_file).exists():
+            model = pickle.loads(Path(args.model_file).read_bytes())
+            if model.n_features_in_ != args.features:
+                raise ValueError("cached model has a different feature count")
+        elif args.model == "lightgbm":
             from lightgbm import LGBMRegressor
             model = LGBMRegressor(n_estimators=20, n_jobs=1, verbosity=-1, random_state=42).fit(original, y)
         else:
             model = HistGradientBoostingRegressor(max_iter=20, random_state=42).fit(original, y)
+    if args.model_file and not Path(args.model_file).exists():
+        Path(args.model_file).write_bytes(pickle.dumps(model))
     packages = ["dalex", "pandas", "polars", "narwhals", "numpy", "scikit-learn"]
     if args.model == "lightgbm":
         packages.append("lightgbm")
     report = {"python": sys.version, "platform": platform.platform(), "settings": vars(args),
+              "source_revision": args.source_revision,
+              "fitted_model_sha256": hashlib.sha256(Path(args.model_file).read_bytes()).hexdigest() if args.model_file else None,
               "versions": {name: metadata.version(name) for name in packages},
               "input_origin": "Polars; original creation/training excluded; pandas conversion included",
               "runtime": "warm inside each measured worker", "families": {}}

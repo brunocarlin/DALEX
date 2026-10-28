@@ -1,6 +1,6 @@
 # Native dataframe migration (incremental)
 
-The Python package now accepts eager pandas and Polars frames. `Explainer.data`
+The Python package now accepts eager pandas, Polars and Arrow frames. `Explainer.data`
 and feature batches passed to the predictor retain their native backend. NumPy
 inputs still become pandas, and the existing H2O conversion remains in place.
 This is an incremental contribution for ModelOriented/DALEX#575, not a claim that
@@ -18,15 +18,26 @@ all DALEX integrations support Polars.
 | DALEX Shapley values (`type='shap'`) | yes | observation metadata and contributions |
 | ceteris paribus | yes | profile table after prediction |
 | partial, accumulated, conditional profiles | yes | aggregation of profile result tables |
-| SHAP kernel/tree/linear wrappers, LIME, model surrogates | yes | explicit NumPy input/output boundaries of the third-party libraries |
+| SHAP kernel/tree/linear/deep/gradient wrappers, LIME, model surrogates | yes | explicit NumPy/tensor boundaries of third-party libraries |
 | Aspect importance/triplots | yes | correlation/contingency statistics and result tables |
 | Arena | yes | labels, attributes, EDA and serialized plot tables |
 
 Classification and regression fairness have cross-backend integration coverage. The optional PPS dependence method is tested separately with Python 3.10/pandas 1.5/ppscore 1.3.
 Its upstream pandas<2 bound and pkg_resources requirement prevent support in the primary 3.14 environment.
-Deep/Gradient SHAP matrix boundaries are implemented, but TensorFlow/PyTorch integration
-has not been certified by this test matrix. Other Narwhals eager backends may validate
-but have not been certified. Lazy inputs are rejected without collecting them.
+Deep/Gradient SHAP has required CPU integration jobs for PyTorch on Python 3.14
+and TensorFlow on 3.13, with custom native-frame prediction callbacks. The tested
+models are single-output dense regressors; complex/multi-input/GPU networks remain
+uncertified. Other Narwhals eager backends may validate but are not certified.
+Lazy inputs are rejected without collecting them.
+
+Scikit-learn and LightGBM regression/binary-classification tests fit once on
+Polars and compare predictions/explanations across pandas, Polars and Arrow.
+Native LightGBM prediction uses its 4.7+ Arrow-stream support. Its stream rejects
+dictionary categorical columns, so use consistent explicit training encoding or
+preprocessing. Older sklearn with Polars 2 also needs positional pipeline selectors
+and an explicit numeric transformer; newer named-selector support should not be
+assumed on older dependency versions. No training/prediction conversion to pandas
+is inserted by DALEX to conceal unsupported model inputs.
 
 Native observation frames must use the same backend and ordered column names as
 the explainer. Lists and NumPy observations are constructed using that backend.
@@ -51,6 +62,10 @@ approve the minimum-version change before release. Pandas remains required at
 `>=1.5.3,<4` for result/statistics tables. Pandas 3 compatibility fixes include
 copy-on-write array mutation, fairness table reshaping/string group detection and
 breakdown plot string labels. Minimum-pandas CI retains 1.5.3 coverage.
+The `<4` cap is a precautionary major-version policy, not evidence that pandas 4
+breaks DALEX. No pandas 4 release/prerelease/nightly was available when checked
+on 2026-10-27. A separate forward-compatibility run tests the available pandas
+3.2 development wheel; that does not certify pandas 4 support.
 
 No new mandatory Polars dependency is imposed on pandas-only users. Install `dalex[polars]`
 (Polars and PyArrow for pandas result materialization) for native Polars inputs.
@@ -103,17 +118,29 @@ does not declare free-threading safety. Passing tests with the explicit override
 does not establish SHAP C-extension safety under concurrent calls. No third-party
 extension safety flags are patched. No free-threading speed claim is made.
 
-DALEX also retains legacy global NumPy RNG use, including serial permutation importance;
-simultaneous seeded explanation calls are not certified to be reproducible. See
-[review evidence](benchmarks/results/REVIEW_READINESS.md) for tested versions and limits.
+Explicitly seeded core explanation streams are local MT19937 generators, retaining
+legacy serial values without resetting another thread's NumPy state. Kernel and
+Gradient SHAP's global NumPy APIs use a cooperating lock/state scope; sampled
+Kernel SHAP resumes the legacy state after background sampling. Threaded tests
+compare serial/concurrent values and verify global RNG isolation. Unseeded calls,
+arbitrary external RNG consumers and arbitrary model-library concurrency remain
+outside that guarantee. See [current review evidence](benchmarks/results/NATIVE_ESTIMATOR_VALIDATION.md).
 
 ## Benchmark protocol
 
-The benchmark uses one fitted HistGradientBoostingRegressor per dataset size,
+The benchmark uses one fitted estimator per dataset size,
 identical NumPy values, targets, weights, seeds, sampled rows, permutations and
-settings for each backend. Its explicit model callback converts either native
-frame to NumPy; that conversion is included in inference and end-to-end timings.
+settings for each backend. In the default sklearn-numpy mode, the callback converts
+either native frame to NumPy; that conversion is included in the timings.
 Native frame construction is also timed. Training and process startup are excluded.
+The default `--model sklearn-numpy` preserves the original explicit-NumPy protocol.
+`--model sklearn-native` and `--model lightgbm-native` fit on Polars and pass native
+frames directly to the model; conversion within the model is still timed. Use
+`--sample-limit 100000` to sample all rows through the 100k case rather than the
+historical 10k cap. `bench_existing_polars.py` separately measures six explanation
+families starting with an existing Polars frame and reports both whole-workflow
+and explanation-only time. [Native estimator tables](benchmarks/results/NATIVE_ESTIMATOR_BENCHMARKS.md)
+retain performance/memory improvements and regressions.
 
 Trials run in fresh spawned processes, alternate backend order, exclude one warm-up
 per backend, and report all trials, medians and interquartile ranges. Both result
@@ -128,7 +155,8 @@ Defaults: 1k, 10k, 100k rows, ten float64 features, five measured trials, three
 permutation rounds, at most 10k sampled rows. CI uses two sizes and three trials.
 Ratios above one favor Polars; regressions below one must also be reported.
 
-Measured results and validation details: [benchmarks/results/PHASE2_VALIDATION.md](benchmarks/results/PHASE2_VALIDATION.md).
+Current results: [benchmarks/results/NATIVE_ESTIMATOR_VALIDATION.md](benchmarks/results/NATIVE_ESTIMATOR_VALIDATION.md).
+Earlier snapshots: [benchmarks/results/PHASE2_VALIDATION.md](benchmarks/results/PHASE2_VALIDATION.md).
 
 ## Remaining-family migration and performance attribution
 

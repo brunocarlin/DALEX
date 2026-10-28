@@ -2,6 +2,14 @@
 
 ### development
 
+* extend native feature coverage to Arrow labels and test Polars-trained sklearn
+  and LightGBM 4.7 regression/classification models, preprocessing and Tree SHAP
+* isolate explicit explanation seeds, including sampled Kernel SHAP, and test
+  shared-model/native-frame concurrency without changing legacy serial values
+* validate CPU TensorFlow/PyTorch Deep/Gradient SHAP tensor and plotting boundaries
+* benchmark native prediction and Polars-origin workflows across six explanation
+  families, retaining explanation-only regressions and memory tradeoffs
+
 * accept eager Polars feature frames through Narwhals while preserving native
   model callbacks across explanation methods; retain pandas result tables (#575)
 * propose Python >=3.10 and Narwhals >=2; validate Python 3.10–3.14 and provide a

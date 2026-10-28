@@ -1,5 +1,9 @@
 # Final migration audit and free-threaded validation
 
+This is the earlier audit snapshot. Expanded native-estimator, Arrow, neural,
+seeded-concurrency and performance evidence is in
+[NATIVE_ESTIMATOR_VALIDATION.md](NATIVE_ESTIMATOR_VALIDATION.md).
+
 Implementation source: `107348aa` (the following documentation/evidence commit
 does not change executable code).
 
@@ -114,5 +118,11 @@ SHAP and arbitrary model libraries are uncertified. PPS still requires the
 separate legacy pandas<2 environment. DALEX retains global NumPy RNG use, so
 simultaneous seeded explanation calls are not certified reproducible. Free-threaded
 SHAP concurrent-call safety remains an upstream concern even when this suite passes.
+Detailed performance/memory comparisons cover permutation importance; other
+explanation families still need benchmarks at scale. Dtype tests cover selected
+nullable/categorical/date adapter cases, not every method with timezone-aware,
+decimal or nested columns. Explanation results/statistics still require pandas;
+this contribution does not remove that dependency. Additional Narwhals backends
+need their own integration matrix before being advertised as supported.
 PR #587 stays draft; upstream Actions still require maintainer approval. Nothing
 is merged and the upstream base branch is unchanged.

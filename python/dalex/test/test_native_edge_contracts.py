@@ -120,6 +120,34 @@ def test_arrow_field_metadata_survives_replacement_and_matrix_bridge():
     assert result.schema.field("items").equals(schema.field("items"), check_metadata=True)
 
 
+def test_arrow_permutations_preserve_metadata_for_native_model_callbacks():
+    import dalex as dx
+
+    schema = pa.schema([
+        pa.field("x", pa.int64(), nullable=False, metadata={b"unit": b"count"}),
+        pa.field("z", pa.float64(), metadata={b"unit": b"meter"}),
+    ], metadata={b"dataset": b"metadata-sensitive-model"})
+    data = pa.Table.from_pydict({"x": [1, 2, 3], "z": [4., 5., 6.]}, schema=schema)
+    for columns in (["x"], ["x", "z"]):
+        changed = shuffle_columns(data, columns, [2, 0, 1])
+        assert changed.schema.equals(schema, check_metadata=True)
+        np.testing.assert_array_equal(changed.column("x").to_numpy(), [3, 1, 2])
+
+    def predict(model, batch):
+        assert isinstance(batch, pa.Table)
+        assert batch.schema.equals(schema, check_metadata=True)
+        return 2 * batch.column("x").to_numpy() + batch.column("z").to_numpy()
+
+    class MetadataModel:
+        pass
+
+    exp = dx.Explainer(MetadataModel(), data, predict(None, data), predict_function=predict,
+                       model_type="regression", label="metadata", verbose=False)
+    result = exp.model_parts(N=None, B=2, random_state=42).result
+    assert np.isfinite(result["dropout_loss"]).all()
+    assert data.schema.equals(schema, check_metadata=True)
+
+
 @pytest.mark.parametrize("backend", ["polars", "arrow"])
 @pytest.mark.parametrize("unit", ["ms", "us", "ns"])
 @pytest.mark.parametrize("timezone", [None, "America/New_York"])

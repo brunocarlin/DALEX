@@ -149,7 +149,13 @@ def shuffle_columns(data, columns, positions):
         return frame.to_native()
     index = np.where(index < 0, index + len(frame), index)
     other = frame[index, names]
-    return frame.with_columns(other.get_column(col) for col in names).to_native()
+    result = frame.with_columns(other.get_column(col) for col in names).to_native()
+    if is_pyarrow_table(data):
+        # Narwhals replaces Arrow columns by name, which drops their Field
+        # metadata. A permutation cannot change types, so reuse the complete
+        # reference schema over the existing immutable buffers (no value copy).
+        result = get_pyarrow().Table.from_arrays(result.columns, schema=data.schema)
+    return result
 
 
 def to_pandas(data):

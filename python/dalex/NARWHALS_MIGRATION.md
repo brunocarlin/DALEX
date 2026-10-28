@@ -240,6 +240,12 @@ explicit categorical codes/grids and consistent missing-category preprocessing.
 The Torch model bridge supports buffer-only inference modules as well as
 parameter-based modules; CPU trainable/frozen checks cover both SHAP APIs.
 
+Triplot hover interpolation uses numeric axis/trace spans directly. It retains
+existing vertices and endpoints and does not start a headless browser; constant
+panels have a positive fallback span. Intermediate hover-point density may differ
+from earlier renderer-derived spacing. Interactive widgets still require anywidget;
+Kaleido remains optional for users' Plotly static image exports.
+
 The clone workaround is restricted to Polars 1.x (and older). Polars 2.0/2.1
 protect their dataframe storage with internal read/write locks; concurrent export
 and default-model prediction probes on ordinary/free-threaded Python did not

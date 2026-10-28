@@ -13,7 +13,7 @@ from re import search
 # - flask:          Arena.run_server
 # - flask_cors:     Arena.run_server
 # - requests:       Arena.stop_server
-# - kaleido:        Aspect triplot widgets
+# - kaleido:        optional Plotly static image exports
 # - ppscore:        Aspect dependency method
 # - ipywidgets:     Aspect triplot widgets
 # - anywidget:      Plotly >=6 FigureWidget used by Aspect triplots

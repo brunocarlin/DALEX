@@ -6,7 +6,7 @@ def finite_range_length(values):
     values = np.asarray(values, dtype=float)
     finite = values[np.isfinite(values)]
     width = float(np.ptp(finite)) if finite.size else 0.
-    return width if width > 0 else 1.
+    return width if np.isfinite(width) and width > 0 else 1.
 
 
 def intersect_unsorted(values, potential_values):

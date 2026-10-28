@@ -7,7 +7,8 @@
 * accept native fairness membership/mitigation vectors and restore legacy Arena
   coverage that was disabled by an unreachable platform guard
 * include `anywidget` in the optional full dependencies for Plotly 6+ triplots
-* resolve triplot axis ranges with one external render instead of three
+* build triplot hover geometry directly from numeric coordinates, preserving
+  existing vertices and supporting constant panels without a headless browser
 * extend native feature coverage to Arrow labels and test Polars-trained sklearn
   and LightGBM 4.7 regression/classification models, preprocessing and Tree SHAP
 * isolate explicit explanation seeds, including sampled Kernel SHAP, and test

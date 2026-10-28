@@ -1,5 +1,22 @@
 # Narwhals migration: refinement review evidence
 
+## Browser-free completion follow-up
+
+Repeated CI runs exposed intermittent Chrome startup/shutdown hangs even after
+the earlier three-to-one render reduction. Triplot construction now uses its
+existing numeric coordinates to choose hover-point density, without Kaleido or
+a headless browser. Existing line vertices, endpoints and node locations are
+retained; the number of intermediate hover points may change. Constant panels
+use a positive fallback span. Twelve pandas/Polars/Arrow widget cases prevent
+external rendering and check vertex/end-point preservation, including constants.
+
+The complete source and rebuilt installed-wheel suites now each pass **360 / 18**.
+The retained 18 skips still execute separately in the compatible PPS job. See
+[browserless-validation.json](browserless-validation.json) for the tested library
+content hashes, exact wheel/sdist hashes and updated counts. The latest CI
+status is linked from the [draft PR](https://github.com/ModelOriented/DALEX/pull/587).
+The historical 354/18 and 353/18 snapshots below remain explicitly identified.
+
 ## Arrow metadata audit follow-up
 
 [b7f7ef3c](https://github.com/brunocarlin/DALEX/commit/b7f7ef3cde3e8bd19d2dcad070a45174cf9b58ae)

@@ -232,6 +232,23 @@ def test_native_triplot_widgets_with_current_plotly(backend, family, constant, m
 
     monkeypatch.setattr(go.Figure, "full_figure_for_development", tracked)
 
+    if family == "predict":
+        from dalex.aspect._predict_triplot import plot as plot_module
+    else:
+        from dalex.aspect._model_triplot import plot as plot_module
+    interpolate = plot_module._add_points_on_dendrogram_traces
+
+    def preserve_vertices(figure):
+        original = [list(zip(trace.x, trace.y)) for trace in figure.data]
+        changed, middle = interpolate(figure)
+        for vertices, trace in zip(original, changed.data):
+            current = list(zip(trace.x, trace.y))
+            assert all(point in current for point in vertices)
+            assert current[0] == vertices[0] and current[-1] == vertices[-1]
+        return changed, middle
+
+    monkeypatch.setattr(plot_module, "_add_points_on_dendrogram_traces", preserve_vertices)
+
     exp, observation = fixture(backend)
     if constant:
         def predict(model, frame):

@@ -248,3 +248,16 @@ matrix boundary. Missing values use NumPy NaN; integer matrices without missing
 values retain exact integer precision. LightGBM 4.7 itself rejects pandas
 ArrowDtype feature columns in the tested environment. Use native Polars/Arrow or
 an explicit model-side conversion rather than an implicit DALEX backend change.
+
+Fairness accepts native Series, Arrow arrays (including chunked dictionaries)
+and one-column frames for protected memberships. Reweighting/resampling also
+normalize native target vectors at the statistical NumPy boundary. Regression
+fairness uses those normalized memberships consistently. Membership strings,
+including any missing-group policy, remain the caller's responsibility.
+
+Partial numeric profiles retain an explicitly missing intervention, including
+the automatic grid for an entirely missing numeric feature. Conditional profiles
+treat that intervention as a separate missing-value bin: only observations with
+a missing original value receive weight in that bin. A numeric accumulated-effect
+grid containing a missing value raises a clear error because the value has no
+numeric ordering; use finite splits or a partial/conditional profile instead.

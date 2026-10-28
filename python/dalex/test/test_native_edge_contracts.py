@@ -249,3 +249,48 @@ def test_optional_leakage_check_does_not_require_temporal_numpy_conversion(monke
                        predict_function=lambda model, frame: frame["x"].to_numpy(),
                        verbose=True, model_type="regression")
     np.testing.assert_array_equal(exp.y_hat, [1., 2., 3.])
+
+
+class MissingNumericModel:
+    def predict(self, data):
+        values = column_values(data, "x").astype(float)
+        return np.where(np.isnan(values), 7., values) + column_values(data, "z")
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars", "arrow"])
+@pytest.mark.parametrize("family", ["partial", "conditional"])
+@pytest.mark.parametrize("all_missing", [False, True])
+def test_numeric_profiles_retain_a_missing_intervention(backend, family, all_missing):
+    import dalex as dx
+
+    original = pd.DataFrame({"x": [np.nan] * 3 if all_missing else [1., np.nan, 3.],
+                             "z": [10., 40., 30.]})
+    data = {"pandas": lambda: original, "polars": lambda: pl.from_pandas(original),
+            "arrow": lambda: pa.Table.from_pandas(original)}[backend]()
+    model = MissingNumericModel()
+    exp = dx.Explainer(model, data, model.predict(data), verbose=False,
+                       model_type="regression", label="model")
+    # The automatic all-missing grid must work as well as an explicit missing
+    # intervention in a column that also contains observed numeric values.
+    extra = {} if all_missing else {"variable_splits": {"x": [1., np.nan, 3.]}}
+    result = exp.model_profile(type=family, N=None, variables=["x"],
+                               verbose=False, **extra).result
+    missing = result.loc[result["_x_"].isna(), "_yhat_"]
+    assert len(missing) == 1
+    expected = 7. + (original.z.mean() if family == "partial" or all_missing else 40.)
+    np.testing.assert_allclose(missing.to_numpy(dtype=float), [expected])
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars", "arrow"])
+def test_accumulated_numeric_profiles_reject_an_unordered_missing_grid(backend):
+    import dalex as dx
+
+    original = pd.DataFrame({"x": [1., np.nan, 3.], "z": [10., 40., 30.]})
+    data = {"pandas": lambda: original, "polars": lambda: pl.from_pandas(original),
+            "arrow": lambda: pa.Table.from_pandas(original)}[backend]()
+    model = MissingNumericModel()
+    exp = dx.Explainer(model, data, model.predict(data), verbose=False,
+                       model_type="regression")
+    with pytest.raises(ValueError, match="missing.*numeric.*grid"):
+        exp.model_profile(type="accumulated", N=None, variables=["x"],
+                          variable_splits={"x": [1., np.nan, 3.]}, verbose=False)

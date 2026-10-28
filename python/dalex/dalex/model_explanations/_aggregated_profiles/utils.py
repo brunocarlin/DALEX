@@ -4,9 +4,14 @@ from tqdm import tqdm
 
 
 def aggregate_profiles(all_profiles, mean_prediction, type, groups, center, span, verbose=True):
+    if type == 'accumulated' and pd.api.types.is_numeric_dtype(all_profiles['_x_']) and all_profiles['_x_'].isna().any():
+        raise ValueError(
+            "Accumulated effects cannot order a missing value in a numeric grid; "
+            "use a finite grid, partial profiles or conditional profiles."
+        )
     if type == 'partial':
         aggregated_profiles = \
-            all_profiles.groupby(['_vname_', '_label_', '_x_'] + groups, sort=False)['_yhat_'].mean().reset_index()
+            all_profiles.groupby(['_vname_', '_label_', '_x_'] + groups, sort=False, dropna=False)['_yhat_'].mean().reset_index()
 
     else:
         # split all_profiles into groups
@@ -66,6 +71,11 @@ def split_over_variables_and_labels(split_profile, type, groups, span):
         diffs = (split_profile['_original_'] - split_profile['_x_']) / range_x
 
         split_profile['_w_'] = norm(diffs, 0, span)
+        if type == 'conditional' and split_profile['_x_'].isna().any():
+            # Missing interventions form a separate bin: numeric distance to a
+            # missing original is undefined, while two missing values match.
+            both_missing = split_profile['_original_'].isna() & split_profile['_x_'].isna()
+            split_profile['_w_'] = split_profile['_w_'].fillna(0).mask(both_missing, 1.)
 
     else:
         # for categorical variables we will calculate weighted average
@@ -81,7 +91,7 @@ def split_over_variables_and_labels(split_profile, type, groups, span):
         # diff causes NaNs at the beginning of each group
         split_profile.loc[np.isnan(split_profile['_yhat_']), '_yhat_'] = 0
 
-    par_profile = split_profile.groupby(['_x_'] + groups, sort=False)[['_yhat_', '_w_']]. \
+    par_profile = split_profile.groupby(['_x_'] + groups, sort=False, dropna=False)[['_yhat_', '_w_']]. \
         apply(lambda point: (point['_yhat_'] * point['_w_']).sum() / point['_w_'].sum() \
         if point['_w_'].sum() != 0 else 0)
 
@@ -147,7 +157,11 @@ def prepare_x(all_profiles, variable_type):
     # create _x_
     for variable in all_profiles['_vname_'].unique():
         where_variable = all_profiles['_vname_'] == variable
-        all_profiles.loc[where_variable, '_x_'] = all_profiles.loc[where_variable, variable]
+        # Normalize nullable masks before assigning into the float grid. Pandas
+        # 3 rejects putting an IntegerArray containing pd.NA into that column.
+        all_profiles.loc[where_variable, '_x_'] = all_profiles.loc[
+            where_variable, variable
+        ].to_numpy(dtype=float, na_value=np.nan)
 
     return all_profiles
 

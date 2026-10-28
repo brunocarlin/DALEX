@@ -242,7 +242,9 @@ class GroupFairnessRegression(_FairnessObject):
         super().__init__(y, y_hat, protected, privileged, verbose)
         checks.check_epsilon(epsilon)
 
-        df_ratios = utils.calculate_regression_measures(y, y_hat, protected, privileged)
+        df_ratios = utils.calculate_regression_measures(
+            self.y, self.y_hat, self.protected, self.privileged
+        )
 
         self.result = df_ratios
         self.label = label

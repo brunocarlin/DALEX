@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import narwhals.stable.v2 as nw
-from narwhals.dependencies import get_polars, is_polars_dataframe, is_pyarrow_table
+from narwhals.dependencies import get_polars, get_pyarrow, is_polars_dataframe, is_pyarrow_table
 
 
 def _legacy_polars_frame(data):
@@ -35,7 +35,12 @@ def as_eager_dataframe(data):
 
 
 def as_numpy_vector(value, name):
-    """Normalize Series or one-column eager DataFrame targets and weights."""
+    """Normalize native vectors or one-column eager DataFrame metadata."""
+    arrow = get_pyarrow()
+    if arrow is not None and isinstance(value, arrow.Array):
+        # Narwhals represents Arrow Series as ChunkedArray, whereas pa.array()
+        # returns Array. Wrapping one existing chunk does not copy its buffers.
+        value = arrow.chunked_array([value])
     try:
         series = nw.from_native(value, series_only=True)
     except TypeError:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import narwhals as nw
+import narwhals.stable.v2 as nw
 from narwhals.dependencies import is_polars_dataframe, is_pyarrow_table
 
 
@@ -35,7 +35,10 @@ def as_numpy_vector(value, name):
         frame = as_eager_dataframe(value)
         if len(frame.columns) != 1:
             raise ValueError(f"'{name}' must have one column") from None
-        return frame.to_numpy().reshape(-1)
+        return to_numpy(frame.to_native()).reshape(-1)
+    native = series.to_native()
+    if hasattr(getattr(native, "type", None), "index_type"):
+        return native.cast(native.type.value_type).to_numpy()
     return series.to_numpy()
 
 
@@ -44,6 +47,12 @@ def to_numpy(data):
         return data
     if isinstance(data, pd.DataFrame):
         return data.to_numpy()
+    if is_pyarrow_table(data) and any(
+        hasattr(column.type, "index_type") for column in data.columns
+    ):
+        # Arrow dictionary.to_numpy can expose a null index's physical value
+        # (e.g. an unused Enum category). Decode before crossing the boundary.
+        return np.column_stack([column_values(data, name) for name in data.column_names])
     return as_eager_dataframe(data).to_numpy()
 
 
@@ -60,9 +69,21 @@ def iter_column_arrays(data):
     """Inspect features without materializing a full mixed/structured matrix."""
     if isinstance(data, pd.DataFrame):
         yield from (series.to_numpy() for _, series in data.items())
+    elif is_pyarrow_table(data):
+        yield from (column_values(data, name) for name in data.column_names)
     else:
         frame = as_eager_dataframe(data)
         yield from (frame.get_column(name).to_numpy() for name in frame.columns)
+
+
+def _row_positions(positions, size):
+    """Validate positions before narrowing integers (uint64 must not wrap)."""
+    index = np.asarray(positions)
+    if index.ndim != 1 or (index.size and index.dtype.kind not in "iu"):
+        raise TypeError("row positions must be a one-dimensional integer sequence")
+    if np.any(index >= size) or (index.dtype.kind != "u" and np.any(index < -size)):
+        raise IndexError("row position out of bounds")
+    return index.astype(np.int64, copy=False)
 
 
 def take_rows(data, positions):
@@ -71,13 +92,8 @@ def take_rows(data, positions):
     Pandas .iloc is kept for its existing index-retention semantics. On other
     backends Narwhals gathers the requested positional order.
     """
-    index = np.asarray(positions)
-    if index.ndim != 1 or (index.size and index.dtype.kind not in "iu"):
-        raise TypeError("row positions must be a one-dimensional integer sequence")
-    index = index.astype(np.int64, copy=False)
     size = data.shape[0]
-    if np.any(index >= size) or np.any(index < -size):
-        raise IndexError("row position out of bounds")
+    index = _row_positions(positions, size)
     if isinstance(data, pd.DataFrame):
         return data.iloc[index, :]
     frame = as_eager_dataframe(data)
@@ -95,8 +111,9 @@ def shuffle_columns(data, columns, positions):
     names = [columns] if np.isscalar(columns) else list(columns)
     if len(positions) != data.shape[0]:
         raise ValueError("permutation must have the same length as data")
+    index = _row_positions(positions, data.shape[0])
     if isinstance(data, pd.DataFrame):
-        other = take_rows(data.loc[:, names], positions)
+        other = data.loc[:, names].iloc[index, :]
         result = data.copy()
         # Extension arrays assign positionally without losing categorical/nullable
         # dtypes on older pandas, or aligning shuffled row labels.
@@ -106,7 +123,10 @@ def shuffle_columns(data, columns, positions):
     frame = as_eager_dataframe(data)
     # Keep the Narwhals wrapper throughout the operation. Round-tripping the
     # selected native frame through take_rows used to validate/wrap it twice more.
-    other = frame[np.asarray(positions, dtype=np.int64), names]
+    if not index.size:
+        return frame.to_native()
+    index = np.where(index < 0, index + len(frame), index)
+    other = frame[index, names]
     return frame.with_columns(other.get_column(col) for col in names).to_native()
 
 
@@ -120,37 +140,112 @@ def to_pandas(data):
 def column_values(data, name):
     if isinstance(data, pd.DataFrame):
         return data[name].to_numpy()
+    if is_pyarrow_table(data):
+        column = data.column(name)
+        if hasattr(column.type, "index_type"):
+            return column.cast(column.type.value_type).to_numpy()
     return as_eager_dataframe(data).get_column(name).to_numpy()
 
 
-def set_columns(data, values):
-    """Return a frame with positional column replacements, without mutating data."""
+def _temporal_counts(values, dtype):
+    """Epoch counts avoid Python datetime's microsecond precision limit."""
+    constructor = pd.Timestamp if isinstance(dtype, nw.Datetime) else pd.Timedelta
+    kind = "datetime64" if isinstance(dtype, nw.Datetime) else "timedelta64"
+    method = "to_datetime64" if isinstance(dtype, nw.Datetime) else "to_timedelta64"
+    counts = []
+    for value in values:
+        if pd.isna(value):
+            counts.append(None)
+        else:
+            native = getattr(constructor(value), method)()
+            counts.append(int(native.astype(f"{kind}[{dtype.time_unit}]").view("i8")))
+    return counts
+
+
+def _restore_native_fields(result, reference, names, schema):
+    """Keep metadata not represented by Narwhals' portable dtype classes."""
+    if is_pyarrow_table(reference):
+        for name in names:
+            dtype = schema[name]
+            field = reference.schema.field(name)
+            column = result.column(name)
+            if not dtype.is_numeric() or isinstance(dtype, nw.Decimal):
+                column = column.cast(field.type)
+            else:
+                # Numeric grids may legitimately promote integer features to
+                # floats; retain field metadata without truncating split points.
+                field = field.with_type(column.type)
+            result = result.set_column(result.schema.get_field_index(name), field, column)
+        result = result.replace_schema_metadata(reference.schema.metadata)
+    elif is_polars_dataframe(reference):
+        for name in names:
+            if isinstance(schema[name], nw.Decimal):
+                # Decimal casting was not implemented by Narwhals 2.0. Use the
+                # native reference dtype rather than infer a smaller precision.
+                result = result.with_columns(result.get_column(name).cast(reference.schema[name]))
+    return result
+
+
+def set_columns(data, values, *, scalar=False):
+    """Return positional replacements without mutating the source.
+
+    ``scalar=True`` broadcasts observation cells, including list/struct cells.
+    Otherwise sequences represent a full replacement column.
+    """
     if isinstance(data, pd.DataFrame):
         result = data.copy()
         for name, value in values.items():
-            if np.ndim(value) and isinstance(result[name].dtype, pd.CategoricalDtype):
+            if isinstance(value, pd.Series):
+                value = value.array  # replacements are positional, never index-aligned
+            if scalar and isinstance(value, (list, tuple, dict, np.ndarray)):
+                result[name] = pd.Series([value] * len(data), index=data.index, dtype=data[name].dtype)
+            elif value is None or (isinstance(result[name].dtype, pd.CategoricalDtype) and not pd.api.types.is_scalar(value)):
                 column = result[name].copy()
                 column.iloc[:] = value
                 result[name] = column.array
             else:
-                result.loc[:, name] = value
+                try:
+                    result.loc[:, name] = value
+                except TypeError:
+                    # pandas 3 rejects implicit integer -> float widening in
+                    # .loc; counterfactual observations may be fractional.
+                    result[name] = value
         return result
     frame = as_eager_dataframe(data)
     backend = nw.get_native_namespace(frame)
+    schema = frame.schema
     expressions = []
     for name, value in values.items():
-        if np.ndim(value) == 0:
+        dtype = schema[name]
+        if scalar or pd.api.types.is_scalar(value) or isinstance(value, dict):
+            if value is pd.NA or value is pd.NaT:
+                value = None
+            if (not dtype.is_numeric() or isinstance(dtype, nw.Decimal)) and pd.api.types.is_scalar(value) and pd.isna(value):
+                # pandas represents missing categorical/date cells as NaN/NaT.
+                # Native enum/dictionary casts require an actual null scalar.
+                value = None
+            if dtype.is_nested() and value is not None:
+                expressions.append(nw.new_series(name, [value] * len(frame), dtype=dtype, backend=backend).cast(dtype))
+                continue
+            if isinstance(dtype, (nw.Datetime, nw.Duration)):
+                value = _temporal_counts([value], dtype)[0]
             expression = nw.lit(value)
-            dtype = frame.schema[name]
-            if isinstance(dtype, (nw.Categorical, nw.Enum)):
+            if (value is None or not dtype.is_numeric()) and not isinstance(dtype, nw.Decimal):
                 expression = expression.cast(dtype)
             expressions.append(expression.alias(name))
         else:
-            series = nw.from_dict({name: value}, backend=backend).get_column(name)
-            if isinstance(frame.schema[name], (nw.Categorical, nw.Enum)):
-                series = series.cast(frame.schema[name])
+            if len(value) != len(frame):
+                raise ValueError("replacement must have the same length as data")
+            if isinstance(dtype, (nw.Datetime, nw.Duration)):
+                series = nw.new_series(name, _temporal_counts(value, dtype), dtype=nw.Int64, backend=backend).cast(dtype)
+            else:
+                if isinstance(dtype, (nw.Categorical, nw.Enum)):
+                    value = [None if pd.isna(cell) else cell for cell in value]
+                series = nw.from_dict({name: value}, backend=backend).get_column(name)
+                if (not dtype.is_numeric() or series.null_count() == len(series)) and not isinstance(dtype, nw.Decimal):
+                    series = series.cast(dtype)
             expressions.append(series)
-    return frame.with_columns(expressions).to_native()
+    return _restore_native_fields(frame.with_columns(expressions).to_native(), data, values, schema)
 
 
 def native_observation(observation, reference, single=False):
@@ -229,10 +324,20 @@ def frame_from_values(values, reference, columns=None):
                 result[name] = pd.Categorical(result[name], dtype=reference[name].dtype)
         return result
     frame = as_eager_dataframe(reference)
-    native = nw.from_dict(
-        {name: array[:, i].tolist() for i, name in enumerate(names)},
-        backend=nw.get_native_namespace(frame),
-    )
-    casts = [nw.col(name).cast(frame.schema[name]) for name in names
-             if isinstance(frame.schema[name], (nw.Categorical, nw.Enum))]
-    return native.with_columns(casts).to_native() if casts else native.to_native()
+    backend = nw.get_native_namespace(frame)
+    columns_data = {}
+    casts = []
+    for i, name in enumerate(names):
+        dtype = frame.schema[name]
+        values = array[:, i].tolist()
+        if isinstance(dtype, (nw.Datetime, nw.Duration)):
+            columns_data[name] = nw.new_series(name, _temporal_counts(values, dtype), dtype=nw.Int64, backend=backend).cast(dtype).to_native()
+        else:
+            if isinstance(dtype, (nw.Categorical, nw.Enum)):
+                values = [None if pd.isna(value) else value for value in values]
+            columns_data[name] = values
+            if (not dtype.is_numeric() or all(value is None for value in values)) and not isinstance(dtype, nw.Decimal):
+                casts.append(nw.col(name).cast(dtype))
+    native = nw.from_dict(columns_data, backend=backend)
+    result = native.with_columns(casts).to_native() if casts else native.to_native()
+    return _restore_native_fields(result, reference, names, frame.schema)

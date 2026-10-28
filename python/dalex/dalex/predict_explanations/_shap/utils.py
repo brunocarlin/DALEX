@@ -95,7 +95,7 @@ def get_single_random_path(predict, model, data, label, new_observation, random_
     yhats = np.empty(len(random_path) + 1)
     yhats[0] = predict(model, current_data).mean()
     for i, candidate in enumerate(random_path):
-        current_data = set_columns(current_data, {names[candidate]: new_observation.iloc[0, candidate]})
+        current_data = set_columns(current_data, {names[candidate]: new_observation.iloc[0, candidate]}, scalar=True)
         yhats[i + 1] = predict(model, current_data).mean()
 
     diffs = np.diff(yhats)
@@ -122,7 +122,7 @@ def nice_pair(df, i1, i2):
 
 
 def nice_format(x):
-    return str(x) if isinstance(x, str) else str(float(signif(x)))
+    return str(float(signif(x))) if isinstance(x, (int, float, np.integer, np.floating)) else str(x)
 
 
 #:# https://stackoverflow.com/a/59888924

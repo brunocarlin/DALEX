@@ -57,7 +57,7 @@ def numeric_features(frame):
     return frame.to_numpy()
 
 
-@pytest.mark.parametrize("family", ["importance", "profile"])
+@pytest.mark.parametrize("family", ["importance", "profile", "break_down", "break_down_interactions", "shap", "ceteris_paribus"])
 def test_sklearn_native_preprocessing_pipeline(family):
     from sklearn.compose import ColumnTransformer
     from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
@@ -87,6 +87,12 @@ def test_sklearn_native_preprocessing_pipeline(family):
         exp = dx.Explainer(model, frame, y, predict_function=predict, verbose=False, label="model")
         if family == "importance":
             result = exp.model_parts(N=32, B=3, random_state=42).result
+        elif family in ("break_down", "break_down_interactions", "shap"):
+            from dalex._dataframe import take_rows
+            result = exp.predict_parts(take_rows(frame, [0]), type=family, N=32, B=3, random_state=42).result
+        elif family == "ceteris_paribus":
+            from dalex._dataframe import take_rows
+            result = exp.predict_profile(take_rows(frame, [0, 1]), variables=["x", "group"], grid_points=5, verbose=False).result
         else:
             result = exp.model_profile(N=20, variables=["x"], grid_points=5, random_state=42, verbose=False).result
         results.append(result.select_dtypes(include=np.number))

@@ -195,3 +195,26 @@ warm-up workers did not warm the measured worker's Python/runtime caches. Use
 its actual timed region still includes constructing a fresh native input frame.
 Cold-start and warm-runtime results are reported separately, including memory:
 warm allocator caches may change both absolute and incremental RSS.
+# Refinement notes
+
+The adapter uses `narwhals.stable.v2`, including at the Narwhals 2.0 minimum.
+Native gathers and shuffles validate integer positions before narrowing, so an
+oversized uint64 cannot wrap into a valid negative index. Observation broadcasts
+also cover nested cells, timezone-aware nanosecond timestamps and durations.
+Arrow field/table metadata and Decimal precision survive reconstruction.
+
+Arrow dictionary values are decoded explicitly at NumPy boundaries: the tested
+PyArrow conversion can expose an unused dictionary entry underneath a null index.
+This is required for missing categorical profile values and Kernel SHAP parity.
+
+Numeric profile grids ignore missing values consistently across backends. This
+also fixes legacy pandas quantile grids that previously became all-NaN. An
+all-missing numeric column has one NaN split; explicit observation values are
+still added when requested. Boolean variables use their observed levels.
+
+Categorical estimator semantics belong to the model: sklearn's OrdinalEncoder
+can learn Polars `None` as a level while treating pandas categorical NaN as
+missing. Tests include explicit native preprocessing to give these values a
+consistent model contract, followed by an explicit NumPy estimator boundary
+for compatibility with older sklearn ColumnTransformer versions.
+

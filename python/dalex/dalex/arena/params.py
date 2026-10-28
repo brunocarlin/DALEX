@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import math
 import pandas as pd
-import narwhals as nw
+import narwhals.stable.v2 as nw
 from .._dataframe import to_numpy, frame_from_values
 from pandas.api.types import is_numeric_dtype, is_bool_dtype, is_object_dtype
 

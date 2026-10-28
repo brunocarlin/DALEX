@@ -95,7 +95,7 @@ def single_variable_profile(predict,
     :return: ceteris paribus profile for one variable
     """
     if not isinstance(data, pd.DataFrame):
-        positions = np.repeat(np.arange(data.shape[0]), len(split_points))
+        positions = np.repeat(np.arange(data.shape[0], dtype=np.int64), len(split_points))
         expanded = take_rows(data, positions)
         original = column_values(expanded, variable)
         native = set_columns(expanded, {variable: np.tile(split_points, data.shape[0])})
@@ -147,15 +147,24 @@ def calculate_variable_split(data,
     probs = np.linspace(0, 1, grid_points)
 
     for variable in variables:
+        # A Series provides the same missing-value semantics for every backend.
+        # np.min(ndarray) propagates NaN while np.min(pandas.Series) skips it.
         variable_column = (data.loc[:, variable] if isinstance(data, pd.DataFrame)
-                           else column_values(data, variable))
-        if pd.api.types.is_numeric_dtype(variable_column):
+                           else pd.Series(column_values(data, variable)))
+        # pandas 1.5 does not classify numeric ArrowDtype via is_numeric_dtype.
+        if variable_column.dtype.kind in "iufc":
+            observed = variable_column.dropna()
+            if observed.empty:
+                # An all-missing feature has one meaningful intervention. Avoid
+                # invalid quantiles and duplicate all-NaN uniform grid points.
+                variable_splits[variable] = np.array([np.nan])
+                continue
             if variable_splits_type == 'uniform':
-                column_splits = np.linspace(np.min(variable_column),
-                                            np.max(variable_column),
+                column_splits = np.linspace(np.min(observed),
+                                            np.max(observed),
                                             grid_points)
             else:
-                column_splits = np.unique(np.quantile(variable_column, probs))
+                column_splits = np.unique(np.quantile(observed, probs))
             if variable_splits_with_obs:
                 column_splits = np.concatenate((column_splits, column_values(new_observation, variable)))
                 column_splits = np.unique(column_splits)

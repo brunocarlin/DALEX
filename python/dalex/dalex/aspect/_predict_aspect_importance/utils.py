@@ -185,7 +185,7 @@ def get_single_random_path(predict_function, data_sample, new_observation, varia
     for i, candidate in enumerate(random_path):
         variables = variable_groups_varnames[candidate]
         for var in variables:
-            current_data = set_columns(current_data, {var: new_observation.iloc[0][var]})
+            current_data = set_columns(current_data, {var: new_observation.iloc[0][var]}, scalar=True)
         yhats[i + 1] = predict_function(current_data).mean()
 
     diffs = np.diff(yhats)

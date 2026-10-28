@@ -452,3 +452,17 @@ properly updated and bars in `plot` are sorted by `abs(contribution)`
 * `BreakDown`, `Shap`, `CeterisParibus`, `ModelPerformance`,
 `VariableImportance` and `AggregatedProfiles` objects with a `plot` method
 * `load_titanic()` function which loads the `titanic_imputed` dataset
+# Narwhals refinement
+
+- Use the Narwhals stable v2 API. Validate positional gathers before integer
+  narrowing and reject fractional/boolean shuffle positions consistently.
+- Preserve null categorical values at Arrow/NumPy boundaries, temporal precision
+  and time zones, nested scalar observations, Decimal precision and Arrow metadata.
+- Generate numeric profile grids from nonmissing values on every backend; an
+  all-missing numeric feature has one missing split. Quantiles now ignore missing
+  values on pandas too. Boolean grids remain categorical.
+- Support fractional counterfactuals on pandas 3 and positional pandas Series
+  replacements. Restore pandas 1.5 accumulated/conditional profile support.
+- Expand categorical/missing-value sklearn and LightGBM integration coverage;
+  run the complete minimum-version suite and add Windows Python 3.14 CI.
+

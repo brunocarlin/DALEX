@@ -81,9 +81,9 @@ def split_over_variables_and_labels(split_profile, type, groups, span):
         # diff causes NaNs at the beginning of each group
         split_profile.loc[np.isnan(split_profile['_yhat_']), '_yhat_'] = 0
 
-    par_profile = split_profile.groupby(['_x_'] + groups, sort=False). \
+    par_profile = split_profile.groupby(['_x_'] + groups, sort=False)[['_yhat_', '_w_']]. \
         apply(lambda point: (point['_yhat_'] * point['_w_']).sum() / point['_w_'].sum() \
-        if point['_w_'].sum() != 0 else 0, include_groups=False)
+        if point['_w_'].sum() != 0 else 0)
 
     par_profile.name = '_yhat_'
     par_profile = par_profile.reset_index()

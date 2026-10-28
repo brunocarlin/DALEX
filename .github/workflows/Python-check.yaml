@@ -24,6 +24,9 @@ jobs:
         python: ['3.10', '3.11', '3.12', '3.13', '3.14']
         pandas: ['<3']
         include:
+          - os: windows-latest
+            python: '3.14'
+            pandas: '<3'
           - os: ubuntu-latest
             python: '3.14'
             pandas: '>=3,<4'
@@ -176,13 +179,22 @@ jobs:
 
   minimum-pandas:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      - run: python -m pip install -e ./python/dalex numpy==1.24.4 pandas==1.5.3 narwhals==2.0.0 'polars>=1.0' pyarrow pytest
-      - run: python -m pytest -q python/dalex/test/test_narwhals_backend.py --junitxml=minimum-pandas.xml
+      - run: python -m pip install -e ./python/dalex -r python/dalex/ci/requirements.txt numpy==1.24.4 pandas==1.5.3 narwhals==2.0.0 'scikit-learn<1.7'
+      - run: |
+          python -m pip check
+          python -m pip freeze > minimum-versions.txt
+          python -m pytest -vv -ra --timeout=120 --timeout-method=thread python/dalex/test --junitxml=minimum-pandas.xml
       - name: Validate optional PPS in its compatible legacy dependency environment
         run: |
           python -m pip install 'setuptools<81' wheel 'scikit-learn<1.7'
@@ -194,4 +206,5 @@ jobs:
           name: minimum-pandas
           path: |
             minimum-pandas.xml
+            minimum-versions.txt
             pps-backend-parity.json

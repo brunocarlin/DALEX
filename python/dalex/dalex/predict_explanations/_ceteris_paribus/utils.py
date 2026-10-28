@@ -75,7 +75,11 @@ def calculate_variable_profile(predict_function,
     profiles = pd.concat(profile)
     # convert the variable types
     # convert_floating=False since pandas v1.2 seem to have issues
-    profiles.loc[:, list(variable_splits)] = profiles.loc[:, list(variable_splits)].convert_dtypes(convert_floating=False)
+    converted = profiles.loc[:, list(variable_splits)].convert_dtypes(convert_floating=False)
+    for variable, column in converted.items():
+        # Explicit positional assignment supports pandas 3's strict dtype rules
+        # and duplicated profile indexes without index alignment.
+        profiles[variable] = column.array
 
     return profiles
 
@@ -98,7 +102,12 @@ def single_variable_profile(predict,
         positions = np.repeat(np.arange(data.shape[0], dtype=np.int64), len(split_points))
         expanded = take_rows(data, positions)
         original = column_values(expanded, variable)
-        native = set_columns(expanded, {variable: np.tile(split_points, data.shape[0])})
+        replacements = np.tile(split_points, data.shape[0])
+        if as_eager_dataframe(data).get_column(variable).dtype.is_numeric():
+            # Match the legacy pandas profile path, which deliberately widens
+            # numeric interventions to float even for integer split points.
+            replacements = replacements.astype(float)
+        native = set_columns(expanded, {variable: replacements})
         yhat = predict(model, native)
         result = to_pandas(native)
         result.index = positions
@@ -108,7 +117,7 @@ def single_variable_profile(predict,
     ids = np.repeat(data.index.values, split_points.shape[0])
     new_data = data.loc[ids, :]
     original = new_data.loc[:, variable].copy()
-    if pd.api.types.is_numeric_dtype(new_data[variable]):
+    if pd.api.types.is_numeric_dtype(new_data[variable]) and not pd.api.types.is_bool_dtype(new_data[variable]):
         new_data[variable] = new_data[variable].astype('float')
     new_data.loc[:, variable] = np.tile(split_points, data.shape[0])
 

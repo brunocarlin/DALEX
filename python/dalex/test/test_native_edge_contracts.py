@@ -187,3 +187,65 @@ def test_pandas_replacement_series_is_positional_and_fractional_values_can_widen
     assert result.index.equals(data.index)
     assert set_columns(data, {"x": 1.5}).x.tolist() == [1.5] * 3
     assert data.x.tolist() == [1, 2, 3]
+
+
+@pytest.mark.parametrize("backend", ["polars", "arrow"])
+def test_untyped_all_null_feature_survives_observation_replacement(backend):
+    from dalex._dataframe import frame_from_values
+
+    data = pl.DataFrame({"missing": [None, None], "x": [1., 2.]})
+    reference = data if backend == "polars" else data.to_arrow()
+    for values in (None, [None, None]):
+        result = set_columns(reference, {"missing": values})
+        assert result.schema == reference.schema
+        assert result.equals(reference)
+    restored = frame_from_values(np.array([[None, 1.]], dtype=object), reference)
+    assert restored.schema == reference.schema
+    assert restored.equals(take_rows(reference, [0]))
+
+
+class CategoricalModel:
+    def predict(self, data):
+        return np.array([12. if pd.isna(value) else (11. if value == True or value == "<NA>" else 10.)
+                         for value in column_values(data, "code")])
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars", "arrow"])
+@pytest.mark.parametrize("kind", ["boolean", "string", "encoded"])
+@pytest.mark.parametrize("family", ["partial", "conditional"])
+def test_categorical_profiles_distinguish_missing_and_literal_labels(backend, kind, family):
+    import dalex as dx
+
+    if kind == "boolean":
+        original = pd.DataFrame({"code": pd.Series([True, False, None], dtype="boolean")})
+    elif kind == "string":
+        original = pd.DataFrame({"code": ["<NA>", "nan", None]})
+    else:
+        original = pd.DataFrame({"code": [0., 1., np.nan]})
+    data = {"pandas": lambda: original, "polars": lambda: pl.from_pandas(original),
+            "arrow": lambda: pa.Table.from_pandas(original)}[backend]()
+    model = CategoricalModel()
+    exp = dx.Explainer(model, data, model.predict(data), verbose=False, label="model", model_type="regression")
+    extra = {"variable_splits": {"code": [0., 1., np.nan]}} if kind == "encoded" else {}
+    result = exp.model_profile(type=family, N=None, variables=["code"], variable_type="categorical",
+                               verbose=False, **extra).result
+    assert len(result) == 3 and result["_x_"].is_unique
+    np.testing.assert_allclose(sorted(result["_yhat_"]), [10., 11., 12.])
+
+
+def test_optional_leakage_check_does_not_require_temporal_numpy_conversion(monkeypatch):
+    import dalex as dx
+
+    data = pl.DataFrame({"x": [1., 2., 3.], "when": pd.date_range("2025-01-01", periods=3, tz="UTC")})
+    original = pl.Series.to_numpy
+
+    def guarded(series, *args, **kwargs):
+        if isinstance(series.dtype, pl.Datetime):
+            raise RuntimeError("this backend cannot export timezone values to NumPy")
+        return original(series, *args, **kwargs)
+
+    monkeypatch.setattr(pl.Series, "to_numpy", guarded)
+    exp = dx.Explainer(CategoricalModel(), data, np.array([1.1, 2.1, 3.1]),
+                       predict_function=lambda model, frame: frame["x"].to_numpy(),
+                       verbose=False, model_type="regression")
+    np.testing.assert_array_equal(exp.y_hat, [1., 2., 3.])

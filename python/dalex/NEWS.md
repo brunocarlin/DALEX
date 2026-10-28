@@ -465,3 +465,14 @@ properly updated and bars in `plot` are sorted by `abs(contribution)`
   replacements. Restore pandas 1.5 accumulated/conditional profile support.
 - Expand categorical/missing-value sklearn and LightGBM integration coverage;
   run the complete minimum-version suite and add Windows Python 3.14 CI.
+
+- Correct conditional categorical profiles for integer codes, nullable booleans
+  and missing levels. Keep missing display labels distinct from literal category
+  strings. Numeric-only explanation outputs remain checked against upstream.
+- Keep categorical profile construction compatible with strict pandas 3 dtypes,
+  preserve all-null native fields, and normalize nullable object vectors.
+- Avoid irrelevant temporal conversions during numeric target-leakage checks.
+  Use cheap Polars clones at export/prediction boundaries to prevent older
+  Polars versions borrowing a shared frame mutably during threaded explanations.
+- Add complete minimum Polars 1.0/Narwhals 2.0 coverage on Python 3.14 and shared
+  sklearn/LightGBM importance checks with both sampled and complete backgrounds.

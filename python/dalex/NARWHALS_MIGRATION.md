@@ -217,3 +217,16 @@ can learn Polars `None` as a level while treating pandas categorical NaN as
 missing. Tests include explicit native preprocessing to give these values a
 consistent model contract, followed by an explicit NumPy estimator boundary
 for compatibility with older sklearn ColumnTransformer versions.
+
+Conditional categorical profiles previously compared numeric/boolean originals
+with string intervention labels, which could produce zero predictions. Labels
+now match values before formatting, normalize missing sentinels to the grid's
+representation and append ` (missing)` if that label collides with a real level.
+These are intentional corrections to pre-existing pandas behavior, covered by
+mathematical expected-value tests, rather than a claim of unchanged broken output.
+Nullable profile columns are assigned positionally to support strict pandas 3.
+
+Older Polars export methods can hold mutable borrows on a frame. Buffer-sharing
+clones at prediction and result/NumPy export boundaries isolate simultaneous
+calls without converting the feature backend. A numeric target-leakage check
+does not export unrelated temporal/nested features just to compare them with y.

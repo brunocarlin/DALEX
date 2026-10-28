@@ -47,6 +47,10 @@ def to_numpy(data):
         return data
     if isinstance(data, pd.DataFrame):
         return data.to_numpy()
+    if is_polars_dataframe(data):
+        # Export methods in older Polars versions borrow the frame mutably.
+        # A cheap buffer-sharing clone isolates simultaneous explanation calls.
+        data = data.clone()
     if is_pyarrow_table(data) and any(
         hasattr(column.type, "index_type") for column in data.columns
     ):
@@ -65,15 +69,21 @@ def column_names(data):
     return as_eager_dataframe(data).columns
 
 
-def iter_column_arrays(data):
+def iter_column_arrays(data, numeric_only=False):
     """Inspect features without materializing a full mixed/structured matrix."""
     if isinstance(data, pd.DataFrame):
         yield from (series.to_numpy() for _, series in data.items())
-    elif is_pyarrow_table(data):
-        yield from (column_values(data, name) for name in data.column_names)
     else:
         frame = as_eager_dataframe(data)
-        yield from (frame.get_column(name).to_numpy() for name in frame.columns)
+        for name in frame.columns:
+            column = frame.get_column(name)
+            if numeric_only and not (column.dtype.is_numeric() or isinstance(
+                column.dtype, (nw.Boolean, nw.Decimal, nw.Categorical, nw.Enum, nw.Object)
+            )):
+                # Datetime/nested/string features cannot equal a numeric target.
+                # Avoid optional conversions unsupported by older backends.
+                continue
+            yield column_values(data, name) if is_pyarrow_table(data) else column.to_numpy()
 
 
 def _row_positions(positions, size):
@@ -134,6 +144,8 @@ def to_pandas(data):
     """Materialize an explanation result/plot boundary; never use for model input."""
     if isinstance(data, pd.DataFrame):
         return data.copy()
+    if is_polars_dataframe(data):
+        data = data.clone()
     return as_eager_dataframe(data).to_pandas()
 
 
@@ -232,7 +244,7 @@ def set_columns(data, values, *, scalar=False):
             if isinstance(dtype, (nw.Datetime, nw.Duration)):
                 value = _temporal_counts([value], dtype)[0]
             expression = nw.lit(value)
-            if (value is None or not dtype.is_numeric()) and not isinstance(dtype, nw.Decimal):
+            if (value is None or not dtype.is_numeric()) and not isinstance(dtype, (nw.Decimal, nw.Unknown)):
                 expression = expression.cast(dtype)
             expressions.append(expression.alias(name))
         else:
@@ -241,10 +253,15 @@ def set_columns(data, values, *, scalar=False):
             if isinstance(dtype, (nw.Datetime, nw.Duration)):
                 series = nw.new_series(name, _temporal_counts(value, dtype), dtype=nw.Int64, backend=backend).cast(dtype)
             else:
-                if isinstance(dtype, (nw.Categorical, nw.Enum)):
+                if isinstance(dtype, (nw.Categorical, nw.Enum, nw.String, nw.Boolean)):
                     value = [None if pd.isna(cell) else cell for cell in value]
+                elif isinstance(value, np.ndarray) and value.dtype.kind == "O":
+                    # Polars preserves a NumPy object array as Object, which
+                    # cannot be cast back to Boolean/List/Struct. Infer from
+                    # Python values while keeping genuine floating NaNs.
+                    value = [None if cell is pd.NA or cell is pd.NaT else cell for cell in value]
                 series = nw.from_dict({name: value}, backend=backend).get_column(name)
-                if (not dtype.is_numeric() or series.null_count() == len(series)) and not isinstance(dtype, nw.Decimal):
+                if (not dtype.is_numeric() or series.null_count() == len(series)) and not isinstance(dtype, (nw.Decimal, nw.Unknown)):
                     series = series.cast(dtype)
             expressions.append(series)
     return _restore_native_fields(frame.with_columns(expressions).to_native(), data, values, schema)
@@ -277,6 +294,8 @@ class NativePredictFunction:
         self.function = function
 
     def __call__(self, model, data):
+        if is_polars_dataframe(data):
+            data = data.clone()
         prediction = self.function(model, data)
         if isinstance(prediction, np.ndarray):
             return prediction
@@ -291,6 +310,8 @@ class NativeResidualFunction:
         self.function = function
 
     def __call__(self, model, data, y):
+        if is_polars_dataframe(data):
+            data = data.clone()
         result = self.function(model, data, y)
         return result if isinstance(result, np.ndarray) else as_numpy_vector(result, "residuals")
 
@@ -332,14 +353,14 @@ def frame_from_values(values, reference, columns=None):
     casts = []
     for i, name in enumerate(names):
         dtype = schema[name]
-        values = array[:, i].tolist()
+        values = [None if value is pd.NA or value is pd.NaT else value for value in array[:, i].tolist()]
         if isinstance(dtype, (nw.Datetime, nw.Duration)):
             columns_data[name] = nw.new_series(name, _temporal_counts(values, dtype), dtype=nw.Int64, backend=backend).cast(dtype).to_native()
         else:
-            if isinstance(dtype, (nw.Categorical, nw.Enum)):
+            if isinstance(dtype, (nw.Categorical, nw.Enum, nw.String, nw.Boolean)):
                 values = [None if pd.isna(value) else value for value in values]
             columns_data[name] = values
-            if (not dtype.is_numeric() or all(value is None for value in values)) and not isinstance(dtype, nw.Decimal):
+            if (not dtype.is_numeric() or all(value is None for value in values)) and not isinstance(dtype, (nw.Decimal, nw.Unknown)):
                 casts.append(nw.col(name).cast(dtype))
     native = nw.from_dict(columns_data, backend=backend)
     result = native.with_columns(casts).to_native() if casts else native.to_native()

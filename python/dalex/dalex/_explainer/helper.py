@@ -11,7 +11,7 @@ def verbose_cat(text, verbose):
 
 
 def is_y_in_data(data, y):
-    for column in iter_column_arrays(data):
+    for column in iter_column_arrays(data, numeric_only=y.dtype.kind in "biufc"):
         try:
             if np.array_equal(column, y):
                 return True

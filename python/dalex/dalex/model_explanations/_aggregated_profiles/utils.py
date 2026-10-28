@@ -138,13 +138,48 @@ def prepare_numerical_categorical(all_profiles, variables, variable_type):
 
 
 def prepare_x(all_profiles, variable_type):
+    if variable_type == 'categorical':
+        labels, original_labels = categorical_profile_labels(all_profiles)
+        # Complete-column assignment also supports pandas 3's StringDtype.
+        all_profiles['_x_'] = labels
+        all_profiles['_original_'] = original_labels
+        return all_profiles
     # create _x_
     for variable in all_profiles['_vname_'].unique():
         where_variable = all_profiles['_vname_'] == variable
         all_profiles.loc[where_variable, '_x_'] = all_profiles.loc[where_variable, variable]
 
-    # change x column to proper character values
-    if variable_type == 'categorical':
-        all_profiles.loc[:, '_x_'] = all_profiles.apply(lambda row: str(row[row['_vname_']]), axis=1)
-
     return all_profiles
+
+
+def categorical_profile_labels(profiles):
+    """Match categorical levels without merging missing and literal labels.
+
+    Numeric codes and nullable booleans can have different pandas dtypes in the
+    intervention/original columns. Missing values share the grid's label, with
+    a suffix only if a real category already uses that display string.
+    """
+    names = profiles['_vname_'].to_numpy()
+    original = profiles['_original_'].to_numpy()
+    labels = np.empty(len(profiles), dtype=object)
+    original_labels = np.empty(len(profiles), dtype=object)
+
+    def missing(value):
+        return pd.api.types.is_scalar(value) and pd.isna(value)
+
+    for variable in pd.unique(names):
+        positions = np.flatnonzero(names == variable)
+        values = profiles[variable].to_numpy()[positions]
+        strings = [str(value) for value in values]
+        missing_mask = [missing(value) for value in values]
+        nonmissing = {label for label, absent in zip(strings, missing_mask) if not absent}
+        # Numeric interventions can become nullable integers while originals
+        # remain floats. Match their values before choosing display strings.
+        level_labels = {value: label for value, label, absent in zip(values, strings, missing_mask) if not absent}
+        missing_label = next((label for label, absent in zip(strings, missing_mask) if absent), '<missing>')
+        while missing_label in nonmissing:
+            missing_label += ' (missing)'
+        labels[positions] = [missing_label if absent else label for label, absent in zip(strings, missing_mask)]
+        original_labels[positions] = [missing_label if missing(value) else level_labels.get(value, str(value))
+                                      for value in original[positions]]
+    return labels, original_labels

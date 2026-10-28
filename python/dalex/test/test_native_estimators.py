@@ -55,7 +55,8 @@ def test_polars_trained_estimator_backend_parity(estimator, family):
         pd.testing.assert_frame_equal(results[0], result, check_exact=False, rtol=1e-10, atol=1e-10)
 
 
-def test_lightgbm_explicit_categorical_encoding_and_missing_values():
+@pytest.mark.parametrize("family", ["importance", "break_down", "shap", "partial", "conditional"])
+def test_lightgbm_explicit_categorical_encoding_and_missing_values(family):
     from lightgbm import LGBMRegressor
 
     # LightGBM's native Arrow stream rejects dictionary columns. Encode with
@@ -72,17 +73,28 @@ def test_lightgbm_explicit_categorical_encoding_and_missing_values():
     )
     results = []
     schema = data.schema
-    for frame in (data.to_pandas(), data):
+    for frame in (data.to_pandas(), data, data.to_arrow()):
         exp = dx.Explainer(model, frame, y, verbose=False, label="model")
         assert exp.data is frame
-        results.append(exp.model_parts(N=40, B=3, random_state=42).result)
-    pd.testing.assert_frame_equal(*results, check_exact=False, atol=1e-10, rtol=1e-10)
+        if family == "importance":
+            result = exp.model_parts(N=40, B=3, random_state=42).result
+        elif family in ("break_down", "shap"):
+            from dalex._dataframe import take_rows
+            result = exp.predict_parts(take_rows(frame, [2]), type=family, N=40, B=3, random_state=42).result
+        else:
+            result = exp.model_profile(type=family, N=40, variables=["category"], variable_type="categorical",
+                                       variable_splits={"category": [0, 1]}, random_state=42, verbose=False).result
+            assert np.isfinite(result["_yhat_"]).all() and (result["_yhat_"] != 0).any()
+        results.append(result)
+    for result in results[1:]:
+        pd.testing.assert_frame_equal(results[0], result, check_exact=False, atol=1e-10, rtol=1e-10)
     assert data.schema == schema and original["category"].to_list() == labels
 
 
 @pytest.mark.parametrize("estimator", ["sklearn", "lightgbm"])
 @pytest.mark.parametrize("backend", ["pandas", "polars"])
-def test_shared_native_estimator_seeded_threaded_importance(estimator, backend):
+@pytest.mark.parametrize("sample", [None, 32])
+def test_shared_native_estimator_seeded_threaded_importance(estimator, backend, sample):
     from concurrent.futures import ThreadPoolExecutor
     from sklearn.ensemble import HistGradientBoostingRegressor
     from lightgbm import LGBMRegressor
@@ -97,7 +109,7 @@ def test_shared_native_estimator_seeded_threaded_importance(estimator, backend):
 
     def calculate(seed):
         exp = dx.Explainer(model, frame, y, label="model", precalculate=False, verbose=False)
-        return exp.model_parts(N=32, B=3, random_state=seed).result
+        return exp.model_parts(N=sample, B=3, random_state=seed).result
 
     seeds = [7, 31, 42, 123]
     expected = [calculate(seed) for seed in seeds]

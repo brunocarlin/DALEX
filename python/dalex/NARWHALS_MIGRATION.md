@@ -124,7 +124,7 @@ Gradient SHAP's global NumPy APIs use a cooperating lock/state scope; sampled
 Kernel SHAP resumes the legacy state after background sampling. Threaded tests
 compare serial/concurrent values and verify global RNG isolation. Unseeded calls,
 arbitrary external RNG consumers and arbitrary model-library concurrency remain
-outside that guarantee. See [current review evidence](benchmarks/results/NATIVE_ESTIMATOR_VALIDATION.md).
+outside that guarantee. See [current review evidence](benchmarks/results/REFINEMENT_VALIDATION.md).
 
 ## Benchmark protocol
 
@@ -139,7 +139,7 @@ frames directly to the model; conversion within the model is still timed. Use
 `--sample-limit 100000` to sample all rows through the 100k case rather than the
 historical 10k cap. `bench_existing_polars.py` separately measures six explanation
 families starting with an existing Polars frame and reports both whole-workflow
-and explanation-only time. [Native estimator tables](benchmarks/results/NATIVE_ESTIMATOR_BENCHMARKS.md)
+and explanation-only time. [Native estimator tables](benchmarks/results/REFINEMENT_BENCHMARKS.md)
 retain performance/memory improvements and regressions.
 
 Trials run in fresh spawned processes, alternate backend order, exclude one warm-up
@@ -155,7 +155,7 @@ Defaults: 1k, 10k, 100k rows, ten float64 features, five measured trials, three
 permutation rounds, at most 10k sampled rows. CI uses two sizes and three trials.
 Ratios above one favor Polars; regressions below one must also be reported.
 
-Current results: [benchmarks/results/NATIVE_ESTIMATOR_VALIDATION.md](benchmarks/results/NATIVE_ESTIMATOR_VALIDATION.md).
+Current results: [benchmarks/results/REFINEMENT_VALIDATION.md](benchmarks/results/REFINEMENT_VALIDATION.md).
 Earlier snapshots: [benchmarks/results/PHASE2_VALIDATION.md](benchmarks/results/PHASE2_VALIDATION.md).
 
 ## Remaining-family migration and performance attribution

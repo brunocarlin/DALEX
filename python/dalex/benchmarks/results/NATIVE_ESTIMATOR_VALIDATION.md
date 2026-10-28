@@ -1,5 +1,7 @@
 # Native estimator migration: final review evidence
 
+> Historical snapshot. See [refinement validation](REFINEMENT_VALIDATION.md) for current coverage.
+
 Tested implementation: `08e8c380f2fb2212fe0620206d8bb61c9819f780`.
 The following evidence/documentation commit does not change library code.
 This report supersedes the earlier validation snapshots for current coverage.

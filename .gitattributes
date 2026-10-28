@@ -2,3 +2,5 @@ docs/* linguist-documentation
 man/* linguist-documentation
 misc/* linguist-documentation
 pkgdown/* linguist-documentation
+python/dalex/benchmarks/results/*.json linguist-generated=true
+python/dalex/benchmarks/results/refinement/*.json linguist-generated=true

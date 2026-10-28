@@ -485,3 +485,9 @@ properly updated and bars in `plot` are sorted by `abs(contribution)`
 - Add runnable native model recipes and a standalone dependency import-order
   diagnostic. Benchmarks can reuse fitted models across source revisions and run
   pandas alone against unmodified upstream code.
+- Avoid identity-population array/range allocations while retaining seeded draws;
+  materialize Shapley observation display data once per explanation.
+- Restrict the Polars export-clone workaround to older versions; Polars 2's
+  internally locked dataframes avoid per-prediction column-reference cloning.
+- Normalize numeric nullable pandas storage at external SHAP boundaries, retaining
+  exact large integer values when no missing-value promotion is needed.

@@ -10,7 +10,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import narwhals.stable.v2 as nw
-from narwhals.dependencies import is_polars_dataframe, is_pyarrow_table
+from narwhals.dependencies import get_polars, is_polars_dataframe, is_pyarrow_table
+
+
+def _legacy_polars_frame(data):
+    # Polars 2 protects its dataframe with internal read/write locks. Earlier
+    # export methods can hold a mutable Python borrow while releasing the GIL.
+    # Avoid the per-column Arc clone cost on wide modern frames.
+    return is_polars_dataframe(data) and get_polars().__version__.startswith(("0.", "1."))
 
 
 def as_eager_dataframe(data):
@@ -47,7 +54,7 @@ def to_numpy(data):
         return data
     if isinstance(data, pd.DataFrame):
         return data.to_numpy()
-    if is_polars_dataframe(data):
+    if _legacy_polars_frame(data):
         # Export methods in older Polars versions borrow the frame mutably.
         # A cheap buffer-sharing clone isolates simultaneous explanation calls.
         data = data.clone()
@@ -144,7 +151,7 @@ def to_pandas(data):
     """Materialize an explanation result/plot boundary; never use for model input."""
     if isinstance(data, pd.DataFrame):
         return data.copy()
-    if is_polars_dataframe(data):
+    if _legacy_polars_frame(data):
         data = data.clone()
     return as_eager_dataframe(data).to_pandas()
 
@@ -296,7 +303,7 @@ class NativePredictFunction:
         self.function = function
 
     def __call__(self, model, data):
-        if is_polars_dataframe(data):
+        if _legacy_polars_frame(data):
             data = data.clone()
         prediction = self.function(model, data)
         if isinstance(prediction, np.ndarray):
@@ -312,7 +319,7 @@ class NativeResidualFunction:
         self.function = function
 
     def __call__(self, model, data, y):
-        if is_polars_dataframe(data):
+        if _legacy_polars_frame(data):
             data = data.clone()
         result = self.function(model, data, y)
         return result if isinstance(result, np.ndarray) else as_numpy_vector(result, "residuals")

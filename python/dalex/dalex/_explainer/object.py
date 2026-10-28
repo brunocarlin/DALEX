@@ -300,7 +300,7 @@ class Explainer:
             N = min(N, self.data.shape[0])
             from .._random import get_random_state
             rng = get_random_state(random_state)
-            I = rng.choice(np.arange(self.data.shape[0]), N, replace=False)
+            I = rng.choice(self.data.shape[0], N, replace=False)
             if _type == 'shap_wrapper' and random_state is not None:
                 _sampling_state = rng.get_state()
             from copy import copy
@@ -611,7 +611,7 @@ class Explainer:
                 N = min(N, self.data.shape[0])
                 from .._random import get_random_state
                 rng = get_random_state(random_state)
-                I = rng.choice(np.arange(self.data.shape[0]), N, replace=False)
+                I = rng.choice(self.data.shape[0], N, replace=False)
                 if random_state is not None:
                     _model_parts._rng_state = rng.get_state()
                 _new_observation = take_rows(self.data, I)
@@ -713,7 +713,7 @@ class Explainer:
         if isinstance(N, int):
             N = min(N, self.data.shape[0])
             from .._random import get_random_state
-            I = get_random_state(random_state).choice(np.arange(self.data.shape[0]), N, replace=False)
+            I = get_random_state(random_state).choice(self.data.shape[0], N, replace=False)
             _y = self.y[I] if self.y is not None else self.y
             _new_observation = take_rows(self.data, I)
         else:

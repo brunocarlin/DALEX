@@ -10,7 +10,7 @@ from ..._random import get_random_state
 
 
 def iterate_paths(predict_function, model, data, label, new_observation, p, b, rng):
-    random_path = rng.choice(np.arange(p), p, replace=False)
+    random_path = rng.choice(p, p, replace=False)
     return get_single_random_path(predict_function, model, data, label, new_observation, random_path, b)
 
 
@@ -24,6 +24,8 @@ def shap(explainer,
     # Now we know the path, so we can calculate contributions
     # set variable indicators
     # start random path
+    native_observation = new_observation
+    new_observation = to_pandas(new_observation)
     p = new_observation.shape[1]
 
     if processes == 1:
@@ -69,7 +71,7 @@ def shap(explainer,
     else:
         yhats_distributions = None
 
-    target_yhat = explainer.predict(new_observation)[0]  # only one new_observation allowed
+    target_yhat = explainer.predict(native_observation)[0]  # only one new_observation allowed
     data_yhat = explainer.predict(explainer.data)
     baseline_yhat = data_yhat.mean()
 
@@ -89,7 +91,8 @@ def calculate_yhats_distributions(explainer):
 
 
 def get_single_random_path(predict, model, data, label, new_observation, random_path, b):
-    new_observation = to_pandas(new_observation)
+    if not isinstance(new_observation, pd.DataFrame):
+        new_observation = to_pandas(new_observation)
     names = np.asarray(column_names(data))
     current_data = deepcopy(data)
     yhats = np.empty(len(random_path) + 1)

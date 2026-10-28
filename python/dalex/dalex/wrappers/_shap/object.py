@@ -10,6 +10,18 @@ from . import checks
 def model_matrix(data, model, shap_type):
     """Honor model-specific tensor boundaries without changing feature backends."""
     values = to_numpy(data)
+    if isinstance(data, pd.DataFrame) and values.dtype.kind == "O" and all(
+        dtype.kind in "biuf" for dtype in data.dtypes
+    ):
+        # Nullable pandas/Arrow storage can export numeric features as an object
+        # matrix containing pd.NA. SHAP's numeric consumers need NumPy NaN, but
+        # keep exact integer storage when no missing value requires promotion.
+        missing = pd.isna(values)
+        dtypes = [np.dtype(getattr(dtype, "numpy_dtype", dtype)) for dtype in data.dtypes]
+        if missing.any():
+            dtypes.append(np.dtype("float32"))
+            values = np.where(missing, np.nan, values)
+        values = values.astype(np.result_type(*dtypes))
     torch = sys.modules.get("torch")
     if shap_type in ("DeepExplainer", "GradientExplainer") and torch is not None and isinstance(model, torch.nn.Module):
         parameter = next(model.parameters(), None)

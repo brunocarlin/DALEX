@@ -34,7 +34,7 @@ class DatasetShapleyValuesResource(Resource):
         # Sample N rows
         N = self.get_option('N')
         if N < rows:
-            sampled_rows = np.random.choice(np.arange(rows), N, replace=False)
+            sampled_rows = np.random.choice(rows, N, replace=False)
             dataset = take_rows(dataset, sampled_rows)
             rows = N
         buffor = []

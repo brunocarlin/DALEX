@@ -235,3 +235,16 @@ does not export unrelated temporal/nested features just to compare them with y.
 explicit categorical codes/grids and consistent missing-category preprocessing.
 The Torch model bridge supports buffer-only inference modules as well as
 parameter-based modules; CPU trainable/frozen checks cover both SHAP APIs.
+
+The clone workaround is restricted to Polars 1.x (and older). Polars 2.0/2.1
+protect their dataframe storage with internal read/write locks; concurrent export
+and default-model prediction probes on ordinary/free-threaded Python did not
+reproduce the old borrow error. This avoids a measured wide-frame overhead from
+cloning column references for every prediction. It does not certify arbitrary
+model internals or prediction options as thread-safe.
+
+Numeric nullable pandas/Arrow storage is normalized only at the external SHAP
+matrix boundary. Missing values use NumPy NaN; integer matrices without missing
+values retain exact integer precision. LightGBM 4.7 itself rejects pandas
+ArrowDtype feature columns in the tested environment. Use native Polars/Arrow or
+an explicit model-side conversion rather than an implicit DALEX backend change.

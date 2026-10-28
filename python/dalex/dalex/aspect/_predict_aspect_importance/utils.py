@@ -170,7 +170,7 @@ def get_sample(n, p, sample_method="default", f=2, random_state=None):
 
 
 def iterate_paths(predict_function, data_sample, new_observation, variable_groups, p, b, rng):
-    random_path = rng.choice(np.arange(p), p, replace=False)
+    random_path = rng.choice(p, p, replace=False)
     return get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b)
 
 

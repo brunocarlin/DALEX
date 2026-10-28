@@ -202,6 +202,10 @@ Native gathers and shuffles validate integer positions before narrowing, so an
 oversized uint64 cannot wrap into a valid negative index. Observation broadcasts
 also cover nested cells, timezone-aware nanosecond timestamps and durations.
 Arrow field/table metadata and Decimal precision survive reconstruction.
+Arrow feature permutations also reuse the complete reference schema over the
+permuted buffers: Narwhals' name-based Arrow column replacement otherwise drops
+metadata on the replaced fields. A metadata-sensitive prediction callback covers
+this boundary in the regression suite.
 
 Arrow dictionary values are decoded explicitly at NumPy boundaries: the tested
 PyArrow conversion can expose an unused dictionary entry underneath a null index.

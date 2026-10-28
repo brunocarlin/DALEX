@@ -1,5 +1,24 @@
 # Narwhals migration: refinement review evidence
 
+## Arrow metadata audit follow-up
+
+[b7f7ef3c](https://github.com/brunocarlin/DALEX/commit/b7f7ef3cde3e8bd19d2dcad070a45174cf9b58ae)
+adds a strict metadata-sensitive model callback regression test and restores the
+complete Arrow schema after feature permutations, using the existing immutable
+column buffers. Narwhals' name-based replacement had dropped replaced-field
+metadata despite preserving values/types. The suite now has **354 passed / 18
+PPS skips**; the source and rebuilt installed-wheel suites both pass. Latest
+checks are available on the [draft PR](https://github.com/ModelOriented/DALEX/pull/587).
+Exact follow-up results and distribution hashes are in
+[arrow-metadata-validation.json](arrow-metadata-validation.json).
+
+The results below are the retained pre-follow-up snapshot, explicitly stamped
+with its tested commits and **353/18** counts. The Arrow schema restoration does
+not change pandas/Polars values or processing; benchmark measurements retain their
+original source stamps rather than being reassigned to the follow-up.
+
+## Source-stamped validation baseline
+
 Library implementation: [42fd07b2](https://github.com/brunocarlin/DALEX/commit/42fd07b2bbf2a8418ea2efad8a1f3e1e5970a856).
 Benchmark instrumentation: [4d471716](https://github.com/brunocarlin/DALEX/commit/4d4717166e400287220560160b2c7c038339e6ab).
 This report supersedes earlier validation counts; historical measurements retain

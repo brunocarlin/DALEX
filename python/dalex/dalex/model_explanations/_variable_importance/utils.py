@@ -39,7 +39,7 @@ def calculate_variable_importance(explainer,
     result = raw.mean().sort_values().reset_index()
     result['label'] = label
 
-    result.rename(columns={0: 'dropout_loss', 'index': 'variable'}, inplace=True)
+    result = result.rename(columns={0: 'dropout_loss', 'index': 'variable'})
 
     if type == "ratio":
         result.loc[:, 'dropout_loss'] = result.loc[:, 'dropout_loss'] / result.loc[

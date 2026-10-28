@@ -476,3 +476,12 @@ properly updated and bars in `plot` are sorted by `abs(contribution)`
   Polars versions borrowing a shared frame mutably during threaded explanations.
 - Add complete minimum Polars 1.0/Narwhals 2.0 coverage on Python 3.14 and shared
   sklearn/LightGBM importance checks with both sampled and complete backgrounds.
+- Reuse pandas work frames already copied by break-down/Shapley/Aspect algorithms
+  while keeping caller inputs unchanged. Skip the hidden target-leakage scan when
+  verbose output is disabled. Remove deprecated inplace result-table updates.
+- Support parameterless Torch modules whose dtype/device is defined by buffers;
+  test trainable/frozen CPU models across both neural explanation APIs and all
+  three frame backends without changing model weights or Torch's default dtype.
+- Add runnable native model recipes and a standalone dependency import-order
+  diagnostic. Benchmarks can reuse fitted models across source revisions and run
+  pandas alone against unmodified upstream code.

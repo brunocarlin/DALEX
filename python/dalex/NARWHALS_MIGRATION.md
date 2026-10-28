@@ -230,3 +230,8 @@ Older Polars export methods can hold mutable borrows on a frame. Buffer-sharing
 clones at prediction and result/NumPy export boundaries isolate simultaneous
 calls without converting the feature backend. A numeric target-leakage check
 does not export unrelated temporal/nested features just to compare them with y.
+
+[Native backend recipes](NATIVE_BACKEND_RECIPES.md) show direct Polars fitting,
+explicit categorical codes/grids and consistent missing-category preprocessing.
+The Torch model bridge supports buffer-only inference modules as well as
+parameter-based modules; CPU trainable/frozen checks cover both SHAP APIs.

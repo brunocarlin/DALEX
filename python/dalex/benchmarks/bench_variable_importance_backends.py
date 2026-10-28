@@ -11,7 +11,6 @@ import json
 import multiprocessing as mp
 import platform
 import sys
-import threading
 import traceback
 from pathlib import Path
 from time import perf_counter
@@ -19,31 +18,12 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 import polars as pl
-import psutil
 from sklearn.ensemble import HistGradientBoostingRegressor
 from threadpoolctl import threadpool_limits
 
 import dalex as dx
 from dalex._dataframe import shuffle_columns, take_rows
-
-
-class RSS:
-    def __enter__(self):
-        self.process = psutil.Process()
-        self.baseline = self.peak = self.process.memory_info().rss
-        self.stop = threading.Event()
-        self.thread = threading.Thread(target=self.sample, daemon=True)
-        self.thread.start()
-        return self
-
-    def sample(self):
-        while not self.stop.wait(.002):
-            self.peak = max(self.peak, self.process.memory_info().rss)
-
-    def __exit__(self, *args):
-        self.peak = max(self.peak, self.process.memory_info().rss)
-        self.stop.set()
-        self.thread.join()
+from _benchmark_utils import RSS, summary
 
 
 class TimedPredict:
@@ -107,22 +87,22 @@ def trial(queue, backend, values, y, weights, model, rounds, warm_runtime=False,
                     for name in names:
                         shuffled = shuffle_columns(frame, name, order)
                 dataframe_seconds = perf_counter()-start
+            raw = result.permutation
+            if raw is None:
+                # DALEX omits the raw table for B=1; its means are exactly the
+                # one observed permutation, so parity remains checkable.
+                raw = result.result.set_index('variable')[['dropout_loss']].T
             queue.put({'backend': backend, 'end_to_end': end_to_end,
                        'dataframe': {'seconds': dataframe_seconds, 'peak_rss_bytes': rss.peak,
                                      'rss_increase_bytes': max(0, rss.peak-rss.baseline)},
                        'outcome': result.result.sort_values('variable').dropout_loss.tolist(),
-                       'raw': result.permutation.sort_index(axis=1).to_numpy().tolist()})
+                       'raw': raw.sort_index(axis=1).to_numpy().tolist()})
     except BaseException:
         queue.put({'error': traceback.format_exc()})
 
 
 def weighted_rmse(y, prediction, sample_weight=None):
     return np.sqrt(np.average((y-prediction)**2, weights=sample_weight))
-
-
-def summary(values):
-    return {'median': float(np.median(values)), 'q25': float(np.quantile(values, .25)),
-            'q75': float(np.quantile(values, .75)), 'min': min(values), 'max': max(values)}
 
 
 def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefix="dalex-narwhals-benchmark", model_kind="sklearn-numpy", sample_limit=10_000):

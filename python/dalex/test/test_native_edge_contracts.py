@@ -247,5 +247,5 @@ def test_optional_leakage_check_does_not_require_temporal_numpy_conversion(monke
     monkeypatch.setattr(pl.Series, "to_numpy", guarded)
     exp = dx.Explainer(CategoricalModel(), data, np.array([1.1, 2.1, 3.1]),
                        predict_function=lambda model, frame: frame["x"].to_numpy(),
-                       verbose=False, model_type="regression")
+                       verbose=True, model_type="regression")
     np.testing.assert_array_equal(exp.y_hat, [1., 2., 3.])

@@ -85,7 +85,7 @@ def check_y(y, data, verbose):
                 verbose_cat("  -> target variable   : Length of 'y' is different than the number of rows in 'data'.",
                             verbose=verbose)
 
-            if is_y_in_data(data, y):
+            if verbose and is_y_in_data(data, y):
                 verbose_cat(
                     "  -> data              : A column identical to the target variable" +
                     " `y` has been found in the `data`.",

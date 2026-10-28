@@ -198,14 +198,16 @@ def _restore_native_fields(result, reference, names, schema):
     return result
 
 
-def set_columns(data, values, *, scalar=False):
-    """Return positional replacements without mutating the source.
+def set_columns(data, values, *, scalar=False, copy=True):
+    """Replace columns positionally, copying pandas sources by default.
 
     ``scalar=True`` broadcasts observation cells, including list/struct cells.
     Otherwise sequences represent a full replacement column.
+    ``copy=False`` can update an already-owned pandas work frame in place;
+    native expression backends still return a new frame.
     """
     if isinstance(data, pd.DataFrame):
-        result = data.copy()
+        result = data.copy() if copy else data
         for name, value in values.items():
             if isinstance(value, pd.Series):
                 value = value.array  # replacements are positional, never index-aligned

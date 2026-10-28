@@ -26,7 +26,7 @@ def calculate_predict_aspect_importance(
     n_sample = take_rows(explainer.data, ids)
     n_sample_changed = deepcopy(n_sample)
     if isinstance(n_sample_changed, pd.DataFrame):
-        n_sample_changed.reset_index(inplace=True, drop=True)
+        n_sample_changed = n_sample_changed.reset_index(drop=True)
 
     if len(variable_groups) == 1:
         result = pd.DataFrame(
@@ -51,7 +51,7 @@ def calculate_predict_aspect_importance(
         for variable in variable_groups[variables_set_key]:
             values = replacements.get(variable, column_values(n_sample_changed, variable))
             replacements[variable] = np.where(mask, new_observation.iloc[0][variable], values)
-    n_sample_changed = set_columns(n_sample_changed, replacements)
+    n_sample_changed = set_columns(n_sample_changed, replacements, copy=False)
 
     # calculate change in predictions
     y_changed = explainer.predict(n_sample_changed) - explainer.predict(n_sample)
@@ -177,7 +177,7 @@ def iterate_paths(predict_function, data_sample, new_observation, variable_group
 def get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b):
     current_data = deepcopy(data_sample)
     if isinstance(current_data, pd.DataFrame):
-        current_data.reset_index(inplace=True, drop=True)
+        current_data = current_data.reset_index(drop=True)
     variable_groups_varnames = list(variable_groups.values())
     variable_groups_aspnames = list(variable_groups.keys())
     yhats = np.empty(len(random_path) + 1)
@@ -185,7 +185,7 @@ def get_single_random_path(predict_function, data_sample, new_observation, varia
     for i, candidate in enumerate(random_path):
         variables = variable_groups_varnames[candidate]
         for var in variables:
-            current_data = set_columns(current_data, {var: new_observation.iloc[0][var]}, scalar=True)
+            current_data = set_columns(current_data, {var: new_observation.iloc[0][var]}, scalar=True, copy=False)
         yhats[i + 1] = predict_function(current_data).mean()
 
     diffs = np.diff(yhats)

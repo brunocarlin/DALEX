@@ -21,7 +21,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from threadpoolctl import threadpool_limits
 
 import dalex as dx
-from bench_variable_importance_backends import RSS, summary
+from _benchmark_utils import RSS, summary
 
 
 def explain(exp, family, sample, rounds):
@@ -74,6 +74,8 @@ def main():
     parser.add_argument("--features", type=int, default=10)
     parser.add_argument("--model-file", help="Reuse one fitted model across source revisions; create if absent")
     parser.add_argument("--source-revision", default="unspecified")
+    parser.add_argument("--backends", nargs="+", choices=["pandas", "polars"], default=["pandas", "polars"],
+                        help="Use pandas alone to benchmark an unmodified upstream source")
     parser.add_argument("--sample", type=int, default=1000)
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--rounds", type=int, default=3)
@@ -109,7 +111,7 @@ def main():
     for family in args.families:
         trials, expected, error = [], None, 0.
         for repeat in range(args.repetitions):
-            for backend in (("pandas", "polars") if repeat % 2 == 0 else ("polars", "pandas")):
+            for backend in (args.backends if repeat % 2 == 0 else args.backends[::-1]):
                 queue = context.Queue()
                 process = context.Process(target=worker, args=(queue,backend,values,y,model,family,min(args.sample,args.rows),args.rounds))
                 process.start()
@@ -124,9 +126,9 @@ def main():
                 error = max(error, float(np.nanmax(np.abs(outcome-expected))))
                 trials.append(item)
         stats = {backend: {key: summary([item[key] for item in trials if item["backend"] == backend])
-                           for key in trials[0] if key != "backend"} for backend in ("pandas", "polars")}
-        ratios = {key: stats["pandas"][key]["median"]/stats["polars"][key]["median"]
-                  for key in ("seconds", "explanation_seconds")}
+                           for key in trials[0] if key != "backend"} for backend in args.backends}
+        ratios = ({key: stats["pandas"][key]["median"]/stats["polars"][key]["median"]
+                   for key in ("seconds", "explanation_seconds")} if {"pandas", "polars"}.issubset(stats) else {})
         report["families"][family] = {"trials": trials, "summary": stats, "pandas_time_over_polars_time": ratios,
                                        "max_absolute_parity_error": error}
         Path(args.output).write_text(json.dumps(report, indent=2)+"\n", encoding="utf-8")

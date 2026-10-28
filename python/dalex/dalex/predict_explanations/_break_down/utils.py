@@ -104,7 +104,7 @@ def calculate_1d_changes(explainer,
     yhats = np.empty(len(column_names(explainer.data)), dtype=object)
     for i, col in enumerate(column_names(explainer.data)):
         current_data = deepcopy(explainer.data)
-        current_data = set_columns(current_data, {col: new_observation.loc[:, col].iloc[0]}, scalar=True)
+        current_data = set_columns(current_data, {col: new_observation.loc[:, col].iloc[0]}, scalar=True, copy=False)
         yhats[i] = explainer.predict(current_data).mean()
 
     return pd.Series(yhats, index=column_names(explainer.data))
@@ -122,7 +122,7 @@ def calculate_2d_changes(explainer,
         current_data = set_columns(current_data, {
             column_names(explainer.data)[int(inds.iloc[i, j])]: new_observation.iloc[0, int(inds.iloc[i, j])]
             for j in (0, 1)
-        }, scalar=True)
+        }, scalar=True, copy=False)
 
         yhats = explainer.predict(current_data)
         average_yhats[i] = yhats.mean()
@@ -185,7 +185,7 @@ def calculate_contributions_along_path(explainer,
         if open_variables.issuperset(candidates):
             # we can add this effect to out path
             for candidate in candidates:
-                current_data = set_columns(current_data, {column_names(explainer.data)[candidate]: new_observation.iloc[0, candidate]}, scalar=True)
+                current_data = set_columns(current_data, {column_names(explainer.data)[candidate]: new_observation.iloc[0, candidate]}, scalar=True, copy=False)
 
             step += 1
 

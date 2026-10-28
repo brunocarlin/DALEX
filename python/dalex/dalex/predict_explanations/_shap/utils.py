@@ -95,7 +95,7 @@ def get_single_random_path(predict, model, data, label, new_observation, random_
     yhats = np.empty(len(random_path) + 1)
     yhats[0] = predict(model, current_data).mean()
     for i, candidate in enumerate(random_path):
-        current_data = set_columns(current_data, {names[candidate]: new_observation.iloc[0, candidate]}, scalar=True)
+        current_data = set_columns(current_data, {names[candidate]: new_observation.iloc[0, candidate]}, scalar=True, copy=False)
         yhats[i + 1] = predict(model, current_data).mean()
 
     diffs = np.diff(yhats)

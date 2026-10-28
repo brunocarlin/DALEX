@@ -10,8 +10,8 @@ import dalex as dx
 from dalex._dataframe import to_numpy
 
 
-@pytest.fixture
-def neural_model():
+@pytest.fixture(params=["trainable", "frozen"])
+def neural_model(request):
     framework = os.environ.get("DALEX_NEURAL_FRAMEWORK", "torch")
     if framework == "torch":
         import torch
@@ -20,6 +20,14 @@ def neural_model():
         with torch.no_grad():
             model[0].weight.copy_(torch.tensor([[2., -.5, .1]], dtype=torch.float64))
             model[0].bias.fill_(.3)
+        if request.param == "frozen":
+            # A frozen inference module can keep weights as buffers and expose
+            # no parameters. Its input dtype/device still comes from the model.
+            for name, parameter in list(model[0].named_parameters(recurse=False)):
+                values = parameter.detach().clone()
+                delattr(model[0], name)
+                model[0].register_buffer(name, values)
+            assert not list(model.parameters())
 
         def predict(model, frame):
             with torch.no_grad():
@@ -34,6 +42,7 @@ def neural_model():
                 kernel_initializer=tf.keras.initializers.Constant([[2.], [-.5], [.1]]),
                 bias_initializer=tf.keras.initializers.Constant(.3)),
         ])
+        model.trainable = request.param == "trainable"
 
         def predict(model, frame):
             return model(to_numpy(frame), training=False).numpy().reshape(-1)
@@ -46,6 +55,10 @@ def neural_model():
 @pytest.mark.parametrize("api", ["predict_parts", "model_parts"])
 def test_neural_shap_native_backend_parity(neural_model, shap_type, api):
     model, predict = neural_model
+    if os.environ.get("DALEX_NEURAL_FRAMEWORK", "torch") == "torch":
+        import torch
+        default_dtype = torch.get_default_dtype()
+        original_weights = {name: tensor.clone() for name, tensor in model.state_dict().items()}
     rng = np.random.default_rng(123)
     data = pl.DataFrame(rng.normal(size=(24, 3)), schema=["x", "z", "u"])
     target = 2 * data["x"].to_numpy() - .5 * data["z"].to_numpy() + .1 * data["u"].to_numpy() + .3
@@ -79,5 +92,9 @@ def test_neural_shap_native_backend_parity(neural_model, shap_type, api):
         results.append(values)
     for values in results[1:]:
         np.testing.assert_allclose(results[0], values, rtol=1e-6, atol=1e-6)
+    if os.environ.get("DALEX_NEURAL_FRAMEWORK", "torch") == "torch":
+        assert torch.get_default_dtype() == default_dtype
+        for name, tensor in model.state_dict().items():
+            torch.testing.assert_close(tensor, original_weights[name], rtol=0, atol=0)
     import matplotlib.pyplot as plt
     plt.close("all")

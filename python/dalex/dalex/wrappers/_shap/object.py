@@ -13,6 +13,8 @@ def model_matrix(data, model, shap_type):
     torch = sys.modules.get("torch")
     if shap_type in ("DeepExplainer", "GradientExplainer") and torch is not None and isinstance(model, torch.nn.Module):
         parameter = next(model.parameters(), None)
+        if parameter is None:
+            parameter = next(model.buffers(), None)
         if parameter is not None:
             return torch.tensor(values, dtype=parameter.dtype, device=parameter.device)
         return torch.tensor(values, dtype=torch.get_default_dtype())

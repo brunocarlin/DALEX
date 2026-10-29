@@ -1,15 +1,15 @@
 # Migration evidence
 
-Start with [refinement validation](REFINEMENT_VALIDATION.md) and
-[refinement benchmark tables](REFINEMENT_BENCHMARKS.md). They identify the tested
+Start with [second refinement review](ROUND2_REVIEW.md) and
+[latest benchmark tables](ROUND2_BENCHMARKS.md). They identify the tested
 implementation commits and distinguish source validation, installed-package
 validation, dependency limitations and performance measurements.
 
 Raw JSON is generated measurement output. GitHub collapses it by default in the
 PR diff; it remains available to expand or download. Every trial and its summary
-statistics are retained. The `refinement/` directory contains the latest wide and
-million-row experiments, their intermediate snapshots and standalone dependency
-probes.
+statistics are retained. The `round2/` directory contains the latest experiments;
+`round2-validation.json` records source/package/CI validation. The `refinement/`
+directory retains the preceding experiments and standalone dependency probes.
 
 Earlier reports in this directory are historical, with their own source commits
 and dependency versions. In particular, `NATIVE_ESTIMATOR_*`, `PHASE2_VALIDATION`,

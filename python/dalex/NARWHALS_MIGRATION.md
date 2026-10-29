@@ -188,7 +188,7 @@ Gradient SHAP's global NumPy APIs use a cooperating lock/state scope; sampled
 Kernel SHAP resumes the legacy state after background sampling. Threaded tests
 compare serial/concurrent values and verify global RNG isolation. Unseeded calls,
 arbitrary external RNG consumers and arbitrary model-library concurrency remain
-outside that guarantee. See [current review evidence](benchmarks/results/REFINEMENT_VALIDATION.md).
+outside that guarantee. See [current review evidence](benchmarks/results/ROUND2_REVIEW.md).
 
 ## Benchmark protocol
 
@@ -219,7 +219,7 @@ Defaults: 1k, 10k, 100k rows, ten float64 features, five measured trials, three
 permutation rounds, at most 10k sampled rows. CI uses two sizes and three trials.
 Ratios above one favor Polars; regressions below one must also be reported.
 
-Current results: [benchmarks/results/REFINEMENT_VALIDATION.md](benchmarks/results/REFINEMENT_VALIDATION.md).
+Current results: [benchmarks/results/ROUND2_REVIEW.md](benchmarks/results/ROUND2_REVIEW.md).
 Earlier snapshots: [benchmarks/results/PHASE2_VALIDATION.md](benchmarks/results/PHASE2_VALIDATION.md).
 
 ## Remaining-family migration and performance attribution

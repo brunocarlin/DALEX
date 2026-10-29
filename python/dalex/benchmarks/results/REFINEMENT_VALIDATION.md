@@ -1,5 +1,8 @@
 # Narwhals migration: refinement review evidence
 
+Historical report. See [second refinement review](ROUND2_REVIEW.md) for the latest
+562-test source validation and explicitly source-stamped benchmarks.
+
 ## Browser-free completion follow-up
 
 Repeated CI runs exposed intermittent Chrome startup/shutdown hangs even after

@@ -223,7 +223,9 @@ def calculate_variable_split(data,
                     if isinstance(data, pd.DataFrame):
                         column_splits = np.unique(np.append(numeric, np.nan))
                     else:
-                        column_splits = np.array(numeric.tolist() + [None], dtype=object)
+                        missing_nan = np.isnan(numeric)
+                        column_splits = np.array(numeric[~missing_nan].tolist() + [None]
+                                                 + ([np.nan] if missing_nan.any() else []), dtype=object)
                 else:
                     column_splits = np.sort(np.unique(values), kind='mergesort')
 

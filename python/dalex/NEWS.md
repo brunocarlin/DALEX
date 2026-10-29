@@ -2,6 +2,8 @@
 
 ### development
 
+* retain observed missing memberships in grouped profiles and exclude unused
+  categorical groups instead of emitting empty or undefined effects
 * avoid redundant work-frame clones for native expression edits while retaining
   owned pandas buffers; batch observation validity checks across wide schemas
 * cover Polars-output sklearn preprocessing pipelines feeding sklearn and

@@ -85,6 +85,14 @@ mixed/structured feature matrix. Display and EDA tables remain pandas boundaries
 Custom HTTP observations reconstruct one native row directly from the submitted
 cells; they do not materialize the model's entire feature dataset for its schema.
 
+Grouped profiles include observed missing memberships and omit unused categorical
+levels. This also fixes inherited pandas behavior: pandas 1.5 ignored categorical
+null groups, unused levels produced empty aggregates, and accumulated profiles
+dropped the missing group's cumulative sum. Independent expected-value tests cover
+partial/conditional/accumulated profiles with string and Enum/dictionary groups.
+These intentionally corrected edge cases are separate from the unchanged finite
+legacy comparison outputs.
+
 ## Compatibility change for maintainers
 
 This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.

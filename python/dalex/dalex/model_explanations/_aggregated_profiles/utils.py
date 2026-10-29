@@ -48,6 +48,13 @@ def aggregate_profiles(all_profiles, mean_prediction, type, groups, center, span
             "Accumulated effects cannot order a missing value in a numeric grid; "
             "use a finite grid, partial profiles or conditional profiles."
         )
+    for group in groups:
+        if isinstance(all_profiles[group].dtype, pd.CategoricalDtype):
+            # pandas 1.5 ignores categorical null groups even with dropna=False;
+            # unused category levels also create fictitious empty aggregates.
+            # Only observed memberships belong in the result (groups are later
+            # serialized to labels, so categorical storage is not part of API).
+            all_profiles[group] = all_profiles[group].astype(object)
     if type == 'partial':
         aggregated_profiles = \
             all_profiles.groupby(['_vname_', '_label_', '_x_'] + groups, sort=False, dropna=False)['_yhat_'].mean().reset_index()
@@ -141,7 +148,7 @@ def split_over_variables_and_labels(split_profile, type, groups, span):
         if len(groups) == 0:
             par_profile['_yhat_'] = par_profile['_yhat_'].cumsum()
         else:
-            par_profile['_yhat_'] = par_profile.groupby(groups, sort=False)['_yhat_'].transform(
+            par_profile['_yhat_'] = par_profile.groupby(groups, sort=False, dropna=False)['_yhat_'].transform(
                 lambda column: column.cumsum())
 
     return par_profile

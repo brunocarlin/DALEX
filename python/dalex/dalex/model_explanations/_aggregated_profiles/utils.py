@@ -82,7 +82,7 @@ def aggregate_profiles(all_profiles, mean_prediction, type, groups, center, span
     # postprocessing
     if len(groups) != 0:
         aggregated_profiles['_groups_'] = aggregated_profiles.loc[:, groups].apply(
-            lambda row: '_'.join(row.astype(str)), axis=1)
+            lambda row: '_'.join(map(str, row)), axis=1)
         aggregated_profiles = aggregated_profiles.drop(columns=groups)
 
         aggregated_profiles.loc[:, '_label_'] = \

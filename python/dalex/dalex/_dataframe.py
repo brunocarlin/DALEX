@@ -204,7 +204,7 @@ def observation_values(data, metadata):
     values = {name: metadata[name].iloc[0] for name in column_names(data)}
     if not isinstance(data, pd.DataFrame):
         frame = as_eager_dataframe(data)
-        for name, absent in zip(frame.columns, frame.head(1).null_count().row(0)):
+        for name, absent in zip(frame.columns, frame.head(1).null_count().to_numpy()[0]):
             if absent:
                 values[name] = None
     return values

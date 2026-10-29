@@ -196,7 +196,7 @@ def check_predict_function_and_model_type(predict_function, model_type,
         model_info_['predict_function_default'] = False
         verbose_cat("  -> predict function  : " + str(predict_function) + " will be used", verbose=verbose)
 
-    if data is not None and not isinstance(data, pd.DataFrame):
+    if data is not None and not isinstance(data, pd.DataFrame) and not isinstance(predict_function, NativePredictFunction):
         predict_function = NativePredictFunction(predict_function)
 
     y_hat = None
@@ -264,7 +264,7 @@ def check_residual_function(residual_function, predict_function, model, data, y,
         verbose_cat("  -> residual function : " + str(residual_function), verbose=verbose)
         model_info['residual_function_default'] = False
 
-    if data is not None and not isinstance(data, pd.DataFrame):
+    if data is not None and not isinstance(data, pd.DataFrame) and not isinstance(residual_function, NativeResidualFunction):
         residual_function = NativeResidualFunction(residual_function)
 
     # if data is specified then we may test residual_function

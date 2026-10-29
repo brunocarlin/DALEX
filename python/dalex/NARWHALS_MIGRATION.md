@@ -82,6 +82,8 @@ snapshot; cross-backend requests reconstruct per-column object cells, preserving
 nullable UInt64 values and native floating validity. Model registration compares
 features with the target one column at a time rather than exporting the entire
 mixed/structured feature matrix. Display and EDA tables remain pandas boundaries.
+Custom HTTP observations reconstruct one native row directly from the submitted
+cells; they do not materialize the model's entire feature dataset for its schema.
 
 ## Compatibility change for maintainers
 

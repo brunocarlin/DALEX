@@ -1,4 +1,4 @@
-from .._dataframe import to_pandas
+from .._dataframe import to_pandas, column_names, frame_from_values
 import logging
 import sys
 import json
@@ -60,14 +60,22 @@ def start_server(arena, host, port, disable_logs, ready=None):
                 custom_params = True
                 try:
                     obj = json.loads(param_label)
-                    data = to_pandas(result['model'].explainer.data) if not result['model'] is None else None
-                    if data is None:
+                    reference = result['model'].explainer.data if not result['model'] is None else None
+                    if reference is None:
                         raise Exception('Custom observation requires model param')
-                    df = pd.concat([
-                        data.head(n=0), 
-                        pd.DataFrame({ k: v for k, v in obj.items() if k in data.columns }, index=[0])
-                    ], ignore_index=True).tail(n=1).reset_index(drop=True)
-                    param = ObservationParam(df, 0)
+                    if isinstance(reference, pd.DataFrame):
+                        df = pd.concat([
+                            reference.head(n=0),
+                            pd.DataFrame({k: v for k, v in obj.items() if k in reference.columns}, index=[0])
+                        ], ignore_index=True).tail(n=1).reset_index(drop=True)
+                        param = ObservationParam(df, 0)
+                    else:
+                        names = list(column_names(reference))
+                        values = np.empty((1, len(names)), dtype=object)
+                        for i, name in enumerate(names):
+                            values[0, i] = obj.get(name)
+                        native = frame_from_values(values, reference)
+                        param = ObservationParam(to_pandas(native), 0, native_dataset=native, position=0)
                     result[param_type] = param
                 except:
                     raise Exception('Invalid custom observation')

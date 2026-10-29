@@ -76,6 +76,13 @@ matrices. These libraries are not certified for models whose prediction depends
 on those distinctions. Native core attribution coverage does not imply that
 every third-party matrix algorithm preserves native scalar semantics.
 
+Arena retains a buffer-sharing native snapshot of pushed observations alongside
+its pandas display table. Same-backend model requests select directly from that
+snapshot; cross-backend requests reconstruct per-column object cells, preserving
+nullable UInt64 values and native floating validity. Model registration compares
+features with the target one column at a time rather than exporting the entire
+mixed/structured feature matrix. Display and EDA tables remain pandas boundaries.
+
 ## Compatibility change for maintainers
 
 This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.

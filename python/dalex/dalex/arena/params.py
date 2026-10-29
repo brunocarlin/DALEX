@@ -4,7 +4,7 @@ import numpy as np
 import math
 import pandas as pd
 import narwhals.stable.v2 as nw
-from .._dataframe import to_numpy, frame_from_values
+from .._dataframe import column_values, frame_from_values, observation_values, select_columns, take_rows, to_pandas
 from pandas.api.types import is_numeric_dtype, is_bool_dtype, is_object_dtype
 
 class Param(ABC):
@@ -29,7 +29,16 @@ class Param(ABC):
 class ModelParam(Param):
     def __init__(self, explainer):
         self.explainer = explainer
-        indexes = np.apply_along_axis(lambda x, y: not (x == y).all(), 0, to_numpy(explainer.data), explainer.y)
+        indexes = []
+        for name in column_names(explainer.data):
+            equal = False
+            if explainer.y is not None:
+                try:
+                    equal = np.array_equal(column_values(explainer.data, name), explainer.y)
+                except (TypeError, ValueError, NotImplementedError):
+                    # Structured feature columns cannot equal a scalar target.
+                    pass
+            indexes.append(not equal)
         self.variables = pd.Index(column_names(explainer.data))[indexes]
     def get_label(self):
         return self.explainer.label
@@ -109,9 +118,11 @@ class VariableParam(Param):
         return ['type', 'min', 'max', 'levels']
 
 class ObservationParam(Param):
-    def __init__(self, dataset, index):
+    def __init__(self, dataset, index, native_dataset=None, position=None):
         self.dataset = dataset
         self.index = index
+        self.native_dataset = native_dataset
+        self.position = position
     def get_label(self):
         return self.index
     def get_type(self):
@@ -121,12 +132,31 @@ class ObservationParam(Param):
     def get_row_for_model(self, model_param):
         try:
             reference = model_param.explainer.data
-            row = self.dataset.loc[[self.index]][list(column_names(reference))]
-            return row if isinstance(reference, pd.DataFrame) else frame_from_values(row.to_numpy(), reference)
+            names = list(column_names(reference))
+            if self.native_dataset is not None:
+                native = select_columns(take_rows(self.native_dataset, [self.position]), names)
+                if type(native) is type(reference):
+                    return native
+                metadata = to_pandas(native)
+                values = observation_values(native, metadata)
+            else:
+                row = self.dataset.loc[[self.index], names]
+                if isinstance(reference, pd.DataFrame):
+                    return row
+                values = observation_values(row, row)
+            # A whole-row NumPy export promotes mixed integer/float rows and
+            # loses large UInt64 cells. Fill an explicit object matrix by column.
+            matrix = np.empty((1, len(names)), dtype=object)
+            for i, name in enumerate(names):
+                matrix[0, i] = values[name]
+            return frame_from_values(matrix, reference)
         except:
             return None
     def get_attributes(self):
-        return dict(self.get_row())
+        if self.native_dataset is not None:
+            native = take_rows(self.native_dataset, [self.position])
+            return observation_values(native, to_pandas(native))
+        return {name: self.dataset.at[self.index, name] for name in self.dataset.columns}
     @staticmethod
     def list_attributes(arena):
         datasets = []

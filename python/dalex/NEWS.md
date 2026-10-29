@@ -2,6 +2,8 @@
 
 ### development
 
+* retain native Arena observation snapshots and exact cross-backend cells;
+  inspect feature/target matches without exporting a full mixed feature matrix
 * preserve native numeric null/NaN distinctions and exact nullable integers in
   breakdown, Shapley, Aspect and explicit ceteris-paribus interventions; reject
   ambiguous numeric aggregate missing bins instead of silently merging states

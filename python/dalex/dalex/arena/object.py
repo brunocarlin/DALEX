@@ -1,4 +1,4 @@
-from .._dataframe import to_pandas
+from .._dataframe import to_pandas, column_names, select_columns
 import threading
 import time
 import numpy as np
@@ -224,10 +224,12 @@ class Arena:
             Overrides constructor `precalculate` parameter when it is not None.
             If true, then only plots using thease observations will be precalculated.
         """
-        # Observation labels/attributes are presentation metadata. Prediction
-        # batches are restored to the model's native backend in ObservationParam.
+        # Keep a buffer-sharing native snapshot for model inputs. The pandas
+        # display table cannot retain every native null or nullable integer.
+        native_observations = None
         if not isinstance(observations, DataFrame):
-            observations = to_pandas(observations)
+            native_observations = select_columns(observations, column_names(observations))
+            observations = to_pandas(native_observations)
         if len(observations.index.names) != 1:
             raise Exception('Observations argument need to have only one index')
         if not observations.index.is_unique:
@@ -236,10 +238,11 @@ class Arena:
         old_observations = self.list_params('observation')
         observations = observations.set_index(observations.index.astype(str))
         params_objects = []
-        for x in observations.index:
+        for position, x in enumerate(observations.index):
             if x in old_observations:
                 raise Exception('Indexes of observations need to be unique across all observations')
-            params_objects.append(ObservationParam(dataset=observations, index=x))
+            params_objects.append(ObservationParam(dataset=observations, index=x,
+                                                   native_dataset=native_observations, position=position))
         with self.mutex:
             self.update_timestamp()
             self.observations.extend(params_objects)

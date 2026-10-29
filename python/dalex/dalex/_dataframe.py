@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import json
 import narwhals.stable.v2 as nw
 from narwhals.dependencies import get_polars, get_pyarrow, is_polars_dataframe, is_pyarrow_table
 
@@ -69,6 +70,10 @@ def to_numpy(data):
         # Arrow dictionary.to_numpy can expose a null index's physical value
         # (e.g. an unused Enum category). Decode before crossing the boundary.
         return np.column_stack([column_values(data, name) for name in data.column_names])
+    if is_pyarrow_table(data):
+        # Pandas schema hints can consume a physical feature as an index or
+        # restore a stale extension dtype. A model matrix uses Arrow fields.
+        data = data.replace_schema_metadata(None)
     return as_eager_dataframe(data).to_numpy()
 
 
@@ -162,6 +167,9 @@ def to_pandas(data):
     """Materialize an explanation result/plot boundary; never use for model input."""
     if isinstance(data, pd.DataFrame):
         return data.copy()
+    if is_pyarrow_table(data):
+        # Arrow has no dataframe index: every physical column is a feature.
+        return data.to_pandas(ignore_metadata=True)
     if _legacy_polars_frame(data):
         data = data.clone()
     return as_eager_dataframe(data).to_pandas()
@@ -225,9 +233,29 @@ def _temporal_counts(values, dtype):
     return counts
 
 
+def _updated_pandas_metadata(metadata, promotions):
+    """Keep pandas' optional dtype hints consistent with promoted Arrow fields."""
+    if not metadata or b'pandas' not in metadata or not promotions:
+        return metadata
+    try:
+        hints = json.loads(metadata[b'pandas'])
+    except (ValueError, TypeError):
+        return metadata
+    if not isinstance(hints, dict) or not isinstance(hints.get('columns'), list):
+        return metadata
+    changed = False
+    for column in hints['columns']:
+        if isinstance(column, dict) and column.get('field_name') in promotions:
+            dtype = promotions[column['field_name']]
+            column.update(pandas_type=dtype, numpy_type=dtype, metadata=None)
+            changed = True
+    return {**metadata, b'pandas': json.dumps(hints).encode()} if changed else metadata
+
+
 def _restore_native_fields(result, reference, names, schema):
     """Keep metadata not represented by Narwhals' portable dtype classes."""
     if is_pyarrow_table(reference):
+        promotions = {}
         for name in names:
             dtype = schema[name]
             field = reference.schema.field(name)
@@ -237,9 +265,14 @@ def _restore_native_fields(result, reference, names, schema):
             else:
                 # Numeric grids may legitimately promote integer features to
                 # floats; retain field metadata without truncating split points.
+                if field.type != column.type:
+                    try:
+                        promotions[name] = np.dtype(column.type.to_pandas_dtype()).name
+                    except (TypeError, NotImplementedError):
+                        promotions[name] = 'object'
                 field = field.with_type(column.type)
             result = result.set_column(result.schema.get_field_index(name), field, column)
-        result = result.replace_schema_metadata(reference.schema.metadata)
+        result = result.replace_schema_metadata(_updated_pandas_metadata(reference.schema.metadata, promotions))
     elif is_polars_dataframe(reference):
         for name in names:
             if isinstance(schema[name], nw.Decimal):

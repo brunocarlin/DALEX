@@ -16,7 +16,9 @@ def test_polars_output_pipeline_explains_original_features(library, classificati
     from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
     from sklearn.impute import SimpleImputer
     from sklearn.pipeline import make_pipeline
-    from sklearn.preprocessing import OneHotEncoder, StandardScaler
+    from sklearn.preprocessing import OneHotEncoder, StandardScaler, FunctionTransformer
+    import sklearn
+    from packaging.version import Version
     from threadpoolctl import threadpool_limits
 
     rng = np.random.default_rng(215)
@@ -27,9 +29,14 @@ def test_polars_output_pipeline_explains_original_features(library, classificati
     response = np.nan_to_num(x) * 2 - data['z'].to_numpy() + np.tile([0., 2.], 40)
     y = (response > np.median(response)).astype(int) if classification else response
     preprocessing = ColumnTransformer([
-        ('numeric', make_pipeline(SimpleImputer(), StandardScaler()), ['x', 'z']),
-        ('category', OneHotEncoder(handle_unknown='ignore', sparse_output=False), ['kind']),
-    ], verbose_feature_names_out=False).set_output(transform='polars')
+        # Older sklearn selects Polars through its former interchange protocol;
+        # positional selectors also work with Polars 2, which removed that API.
+        ('numeric', make_pipeline(SimpleImputer(), StandardScaler()), [0, 1]),
+        ('category', OneHotEncoder(handle_unknown='ignore', sparse_output=False), [2]),
+    ], verbose_feature_names_out=False)
+    legacy_polars = Version(sklearn.__version__) < Version('1.9')
+    if not legacy_polars:
+        preprocessing.set_output(transform='polars')
     if library == 'lightgbm':
         from lightgbm import LGBMClassifier, LGBMRegressor
         estimator = (LGBMClassifier if classification else LGBMRegressor)(
@@ -38,7 +45,15 @@ def test_polars_output_pipeline_explains_original_features(library, classificati
         estimator = (HistGradientBoostingClassifier if classification else HistGradientBoostingRegressor)(
             max_iter=8, random_state=42)
     with threadpool_limits(limits=1):
-        model = make_pipeline(preprocessing, estimator).fit(data, y)
+        if legacy_polars:
+            # sklearn <1.9 validates dataframe outputs using the interchange
+            # protocol removed by Polars 2. Keep that external matrix boundary
+            # explicit, then give the estimator a model-owned Polars batch.
+            bridge = FunctionTransformer(lambda values: pl.DataFrame(
+                values, schema=['x', 'z', 'kind_a', 'kind_b'], orient='row'))
+            model = make_pipeline(preprocessing, bridge, estimator).fit(data, y)
+        else:
+            model = make_pipeline(preprocessing, estimator).fit(data, y)
         method = 'predict_proba' if classification else 'predict'
         original_predict = getattr(estimator, method)
         seen = []

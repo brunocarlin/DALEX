@@ -80,10 +80,15 @@ explainer = dx.Explainer(pipeline, features, target, verbose=False)
 importance = explainer.model_parts(N=500, B=3, random_state=42)
 ```
 
-Polars output support requires sklearn >=1.4; the integration matrix exercises
-the versions available on supported Python interpreters. Arrow input selection
-in older sklearn versions has separate limitations; the explicit positional
-preprocessing recipe below remains available for that case.
+`set_output(transform="polars")` was introduced in sklearn 1.4, but Polars 2
+removed the interchange/dimension APIs used to validate those outputs in older
+sklearn. The direct recipe above is tested with sklearn 1.9. On 1.6–1.8, use
+positional selectors and an explicit matrix boundary for preprocessing, followed
+by a model-owned `FunctionTransformer` that creates a Polars batch before the
+estimator. The integration tests exercise this fallback without changing DALEX's
+native input batches. Arrow input selection in older sklearn versions has
+separate limitations; the explicit positional preprocessing recipe below remains
+available for that case.
 
 ## Categorical LightGBM features
 

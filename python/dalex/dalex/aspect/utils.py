@@ -57,7 +57,20 @@ def calculate_assoc_matrix(data, corr_method):
     # Statistical correlation/contingency boundary. Prediction batches stay native.
     if not isinstance(data, pd.DataFrame):
         data = to_pandas(data)
-    corr_matrix = abs(data.corr(corr_method, numeric_only=True)) # get submatrix for only numerical variables
+    try:
+        corr_matrix = abs(data.corr(corr_method, numeric_only=True))
+    except TypeError:
+        # Older pandas ArrowExtensionArray.to_numpy ignores na_value before a
+        # float cast, so corr fails on pd.NA. Normalize only this statistics
+        # copy; model feature storage and exact integer observations stay native.
+        numeric_arrow = [name for name in data if isinstance(data[name].dtype, pd.ArrowDtype)
+                         and data[name].dtype.kind in 'biuf']
+        if not numeric_arrow:
+            raise
+        data = data.copy()
+        for name in numeric_arrow:
+            data[name] = np.asarray(data[name].array.__arrow_array__().to_numpy(), dtype=float)
+        corr_matrix = abs(data.corr(corr_method, numeric_only=True))
     numerical_variables = corr_matrix.columns 
     categorical_variables = list(set(data.columns) - set(numerical_variables))
     n = len(data)

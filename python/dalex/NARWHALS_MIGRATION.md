@@ -93,6 +93,20 @@ partial/conditional/accumulated profiles with string and Enum/dictionary groups.
 These intentionally corrected edge cases are separate from the unchanged finite
 legacy comparison outputs.
 
+Arrow tables created from pandas can carry index and extension-dtype hints in
+their schema metadata. Native Arrow explanation boundaries use physical field
+names and types: pandas display conversion ignores those hints, and NumPy export
+does not silently consume an index field. Numeric promotions update obsolete
+pandas dtype hints while retaining custom schema/field metadata and index hints,
+so a caller's explicit `table.to_pandas()` also consumes fractional interventions
+correctly. A physically stored pandas index column is an Arrow feature; remove
+it explicitly when constructing the model's feature table if that is not intended.
+
+Older pandas correlation failures on nullable Arrow-backed numbers are handled
+in a separate statistics copy. Reusing an Explainer's native callback adapters
+does not wrap them again or hide local functions from the documented pickle-drop
+and default-restoration behavior.
+
 ## Compatibility change for maintainers
 
 This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.

@@ -2,6 +2,9 @@
 
 ### development
 
+* preserve physical Arrow features despite pandas index metadata, refresh stale
+  pandas dtype hints after numeric promotions, and retain callback serialization
+  when prediction/residual adapters are reused
 * retain observed missing memberships in grouped profiles and exclude unused
   categorical groups instead of emitting empty or undefined effects
 * avoid redundant work-frame clones for native expression edits while retaining

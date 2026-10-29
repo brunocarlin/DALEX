@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import numpy as np
 import pandas as pd
-from ..._dataframe import set_columns, to_pandas
+from ..._dataframe import set_columns, to_pandas, observation_values
 
 
 def local_interactions(explainer,
@@ -18,12 +18,14 @@ def local_interactions(explainer,
 
     # set target
     target_yhat = explainer.predict(new_observation)
-    new_observation = to_pandas(new_observation)
+    metadata = to_pandas(new_observation)
+    values = observation_values(new_observation, metadata)
+    new_observation = metadata
     baseline_yhat = np.mean(explainer.predict(explainer.data))
 
     # 1d changes
     # how the average would change if single variable is changed
-    average_yhats = calculate_1d_changes(explainer, new_observation)
+    average_yhats = calculate_1d_changes(explainer, new_observation, values)
     diffs_1d = average_yhats - baseline_yhat
 
     if type == '2d':
@@ -45,7 +47,7 @@ def local_interactions(explainer,
 
         # 2d changes
         # how the average would change if two variables are changed
-        average_yhats_2d, average_yhats_2d_norm = calculate_2d_changes(explainer, new_observation, inds, diffs_1d)
+        average_yhats_2d, average_yhats_2d_norm = calculate_2d_changes(explainer, new_observation, inds, diffs_1d, values)
 
         diffs_2d = average_yhats_2d - baseline_yhat
         diffs_2d_norm = average_yhats_2d_norm - baseline_yhat
@@ -79,7 +81,8 @@ def local_interactions(explainer,
                                                        baseline_yhat,
                                                        target_yhat,
                                                        type,
-                                                       keep_distributions)
+                                                       keep_distributions,
+                                                       values)
 
     result = pd.DataFrame(result)
 
@@ -100,11 +103,12 @@ def local_interactions(explainer,
 
 
 def calculate_1d_changes(explainer,
-                         new_observation):
+                         new_observation, values=None):
+    values = observation_values(new_observation, new_observation) if values is None else values
     yhats = np.empty(len(column_names(explainer.data)), dtype=object)
     for i, col in enumerate(column_names(explainer.data)):
         current_data = deepcopy(explainer.data)
-        current_data = set_columns(current_data, {col: new_observation.loc[:, col].iloc[0]}, scalar=True, copy=False)
+        current_data = set_columns(current_data, {col: values[col]}, scalar=True, copy=False)
         yhats[i] = explainer.predict(current_data).mean()
 
     return pd.Series(yhats, index=column_names(explainer.data))
@@ -113,14 +117,15 @@ def calculate_1d_changes(explainer,
 def calculate_2d_changes(explainer,
                          new_observation,
                          inds,
-                         diffs_1d):
+                         diffs_1d, values=None):
+    values = observation_values(new_observation, new_observation) if values is None else values
     average_yhats = np.empty(inds.shape[0])
     average_yhats_norm = np.empty(inds.shape[0])
 
     for i in range(inds.shape[0]):
         current_data = deepcopy(explainer.data)
         current_data = set_columns(current_data, {
-            column_names(explainer.data)[int(inds.iloc[i, j])]: new_observation.iloc[0, int(inds.iloc[i, j])]
+            column_names(explainer.data)[int(inds.iloc[i, j])]: values[column_names(explainer.data)[int(inds.iloc[i, j])]]
             for j in (0, 1)
         }, scalar=True, copy=False)
 
@@ -166,7 +171,8 @@ def calculate_contributions_along_path(explainer,
                                        baseline_yhat,
                                        target_yhat,
                                        type,
-                                       keep_distributions):
+                                       keep_distributions, values=None):
+    values = observation_values(new_observation, new_observation) if values is None else values
     open_variables = set(np.arange(explainer.data.shape[1]))
     current_data = deepcopy(explainer.data)
     step = 0
@@ -185,7 +191,8 @@ def calculate_contributions_along_path(explainer,
         if open_variables.issuperset(candidates):
             # we can add this effect to out path
             for candidate in candidates:
-                current_data = set_columns(current_data, {column_names(explainer.data)[candidate]: new_observation.iloc[0, candidate]}, scalar=True, copy=False)
+                name = column_names(explainer.data)[candidate]
+                current_data = set_columns(current_data, {name: values[name]}, scalar=True, copy=False)
 
             step += 1
 

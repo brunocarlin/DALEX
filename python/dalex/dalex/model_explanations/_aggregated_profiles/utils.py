@@ -3,6 +3,49 @@ import pandas as pd
 from tqdm import tqdm
 
 
+def check_native_missing_interventions(profiles, variables, profile_type):
+    """Do not silently merge native null/NaN states at the pandas boundary.
+
+    Numeric aggregate grids use one pandas missing key. CP predictions retain
+    the distinct native interventions, but this result API cannot label both.
+    Conditional missing bins additionally need an unambiguous original state.
+    Combine states across CP objects with the same label, as aggregation does.
+    """
+    states = {}
+    for profile in profiles:
+        if not getattr(profile, "_native_features", False):
+            continue
+        for variable in variables:
+            if variable not in profile.variable_splits or not pd.api.types.is_numeric_dtype(profile.result[variable]):
+                continue
+            missing = set()
+            for value in profile.variable_splits[variable]:
+                if value is None or value is pd.NA or value is pd.NaT:
+                    missing.add('null')
+                elif isinstance(value, (float, np.floating)) and np.isnan(value):
+                    missing.add('nan')
+            if not missing:
+                continue
+            rows = profile.result.loc[profile.result['_vname_'] == variable]
+            if rows.empty:
+                continue
+            key = (variable, rows['_label_'].iloc[0])
+            interventions, originals = states.setdefault(key, (set(), set()))
+            interventions.update(missing)
+            if profile_type == 'conditional':
+                for value in rows.drop_duplicates('_ids_')['_original_']:
+                    if value is None or value is pd.NA or value is pd.NaT:
+                        originals.add('null')
+                    elif isinstance(value, (float, np.floating)) and np.isnan(value):
+                        originals.add('nan')
+    for (variable, _), (interventions, originals) in states.items():
+        if len(interventions) > 1 or (profile_type == 'conditional' and interventions and len(originals) > 1):
+            raise ValueError(
+                f"Numeric profiles cannot aggregate distinct native null and NaN states for {variable!r}; "
+                "use predict_profile for separate interventions or normalize missing values explicitly."
+            )
+
+
 def aggregate_profiles(all_profiles, mean_prediction, type, groups, center, span, verbose=True):
     if type == 'accumulated' and pd.api.types.is_numeric_dtype(all_profiles['_x_']) and all_profiles['_x_'].isna().any():
         raise ValueError(

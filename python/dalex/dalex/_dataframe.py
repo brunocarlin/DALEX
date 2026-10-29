@@ -167,14 +167,40 @@ def to_pandas(data):
     return as_eager_dataframe(data).to_pandas()
 
 
-def column_values(data, name):
+def column_values(data, name, *, preserve_nulls=False):
     if isinstance(data, pd.DataFrame):
         return data[name].to_numpy()
+    if preserve_nulls:
+        column = as_eager_dataframe(data).get_column(name)
+        if column.dtype.is_numeric() and column.null_count():
+            # Float NumPy exports collapse null into NaN and can round nullable
+            # integers. Masked feature edits must retain the untouched values.
+            values = np.empty(len(column), dtype=object)
+            values[:] = column.to_list()
+            return values
     if is_pyarrow_table(data):
         column = data.column(name)
         if hasattr(column.type, "index_type"):
             return column.cast(column.type.value_type).to_numpy()
     return as_eager_dataframe(data).get_column(name).to_numpy()
+
+
+def observation_values(data, metadata):
+    """First-row feature cells, preserving native nulls before interventions.
+
+    ``metadata`` is the already-created pandas display table. Its per-column
+    scalars preserve temporal precision and integer values, but its NumPy-backed
+    floating columns merge native nulls with NaN. Read the native validity mask
+    before using these scalars as model inputs. Result labels keep their existing
+    pandas representation.
+    """
+    values = {name: metadata[name].iloc[0] for name in column_names(data)}
+    if not isinstance(data, pd.DataFrame):
+        frame = as_eager_dataframe(data)
+        for name in values:
+            if frame.get_column(name).is_null().item(0):
+                values[name] = None
+    return values
 
 
 def _temporal_counts(values, dtype):
@@ -214,6 +240,16 @@ def _restore_native_fields(result, reference, names, schema):
                 # native reference dtype rather than infer a smaller precision.
                 result = result.with_columns(result.get_column(name).cast(reference.schema[name]))
     return result
+
+
+def _uint64_integer_values(dtype, values):
+    # Inference from Python integers defaults to signed int64 in Arrow. Keep
+    # the explicit reference type when a nullable UInt64 replacement is exact;
+    # fractional interventions still follow the normal floating promotion.
+    return isinstance(dtype, nw.UInt64) and all(
+        value is None or (isinstance(value, (int, np.integer)) and 0 <= value <= 2**64 - 1)
+        for value in values
+    )
 
 
 def set_columns(data, values, *, scalar=False, copy=True):
@@ -280,7 +316,9 @@ def set_columns(data, values, *, scalar=False, copy=True):
                     # cannot be cast back to Boolean/List/Struct. Infer from
                     # Python values while keeping genuine floating NaNs.
                     value = [None if cell is pd.NA or cell is pd.NaT else cell for cell in value]
-                series = nw.from_dict({name: value}, backend=backend).get_column(name)
+                series = (nw.new_series(name, value, dtype=dtype, backend=backend)
+                          if _uint64_integer_values(dtype, value)
+                          else nw.from_dict({name: value}, backend=backend).get_column(name))
                 if (not dtype.is_numeric() or series.null_count() == len(series)) and not isinstance(dtype, (nw.Decimal, nw.Unknown)):
                     series = series.cast(dtype)
             expressions.append(series)
@@ -379,7 +417,8 @@ def frame_from_values(values, reference, columns=None):
         else:
             if isinstance(dtype, (nw.Categorical, nw.Enum, nw.String, nw.Boolean)):
                 values = [None if pd.isna(value) else value for value in values]
-            columns_data[name] = values
+            columns_data[name] = (nw.new_series(name, values, dtype=dtype, backend=backend).to_native()
+                                  if _uint64_integer_values(dtype, values) else values)
             if (not dtype.is_numeric() or all(value is None for value in values)) and not isinstance(dtype, (nw.Decimal, nw.Unknown)):
                 casts.append(nw.col(name).cast(dtype))
     native = nw.from_dict(columns_data, backend=backend)

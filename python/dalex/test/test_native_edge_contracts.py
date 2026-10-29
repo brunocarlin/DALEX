@@ -71,7 +71,8 @@ def test_nullable_integer_and_boolean_profile_grids(backend, all_missing):
             "polars": lambda: data, "arrow": data.to_arrow}[backend]()
     for kind in ("uniform", "quantiles"):
         grids = calculate_variable_split(data, ["x", "flag"], 3, kind)
-        np.testing.assert_array_equal(grids["x"], [np.nan] if all_missing else [1., 2., 3.])
+        expected = ([np.nan] if backend == "pandas" else [None]) if all_missing else [1., 2., 3.]
+        np.testing.assert_array_equal(grids["x"], expected)
         assert len(grids["flag"]) == 3
         assert any(value is True or value == np.bool_(True) for value in grids["flag"] if not pd.isna(value))
 

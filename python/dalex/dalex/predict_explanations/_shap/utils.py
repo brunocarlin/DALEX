@@ -5,13 +5,13 @@ from numpy.random import SeedSequence, default_rng
 
 import numpy as np
 import pandas as pd
-from ..._dataframe import set_columns, to_pandas
+from ..._dataframe import set_columns, to_pandas, observation_values
 from ..._random import get_random_state
 
 
-def iterate_paths(predict_function, model, data, label, new_observation, p, b, rng):
+def iterate_paths(predict_function, model, data, label, new_observation, p, b, rng, values=None):
     random_path = rng.choice(p, p, replace=False)
-    return get_single_random_path(predict_function, model, data, label, new_observation, random_path, b)
+    return get_single_random_path(predict_function, model, data, label, new_observation, random_path, b, values)
 
 
 def shap(explainer,
@@ -26,13 +26,14 @@ def shap(explainer,
     # start random path
     native_observation = new_observation
     new_observation = to_pandas(new_observation)
+    values = observation_values(native_observation, new_observation)
     p = new_observation.shape[1]
 
     if processes == 1:
         rng = get_random_state(random_state)
         result_list = [
             iterate_paths(explainer.predict_function, explainer.model, explainer.data,
-                          explainer.label, new_observation, p, b + 1, rng)
+                          explainer.label, new_observation, p, b + 1, rng, values)
             for b in range(B)]
     else:
         # Create number generator for each iteration
@@ -41,7 +42,7 @@ def shap(explainer,
         with mp.get_context('spawn').Pool(processes) as pool:
             result_list = pool.starmap_async(iterate_paths,
                                              [(explainer.predict_function, explainer.model, explainer.data,
-                                               explainer.label, new_observation, p, b + 1, generators[b]) for b in range(B)]).get()
+                                               explainer.label, new_observation, p, b + 1, generators[b], values) for b in range(B)]).get()
 
     result = pd.concat(result_list)
 
@@ -62,7 +63,7 @@ def shap(explainer,
             result = pd.concat((result, result_average))
         else:
             tmp = get_single_random_path(explainer.predict_function, explainer.model, explainer.data, explainer.label,
-                                         new_observation, path, 0)
+                                         new_observation, path, 0, values)
 
             result = pd.concat((result, tmp))
 
@@ -90,15 +91,17 @@ def calculate_yhats_distributions(explainer):
     })
 
 
-def get_single_random_path(predict, model, data, label, new_observation, random_path, b):
+def get_single_random_path(predict, model, data, label, new_observation, random_path, b, values=None):
+    native_observation = new_observation
     if not isinstance(new_observation, pd.DataFrame):
         new_observation = to_pandas(new_observation)
+    values = observation_values(native_observation, new_observation) if values is None else values
     names = np.asarray(column_names(data))
     current_data = deepcopy(data)
     yhats = np.empty(len(random_path) + 1)
     yhats[0] = predict(model, current_data).mean()
     for i, candidate in enumerate(random_path):
-        current_data = set_columns(current_data, {names[candidate]: new_observation.iloc[0, candidate]}, scalar=True, copy=False)
+        current_data = set_columns(current_data, {names[candidate]: values[names[candidate]]}, scalar=True, copy=False)
         yhats[i + 1] = predict(model, current_data).mean()
 
     diffs = np.diff(yhats)

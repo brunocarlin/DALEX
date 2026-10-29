@@ -112,6 +112,7 @@ class CeterisParibus(Explanation):
         checks.check_data(explainer.data, self.variables)
 
         self.new_observation = checks.check_new_observation(new_observation, explainer)
+        self._native_features = not isinstance(explainer.data, pd.DataFrame)
 
         self.variable_splits = checks.check_variable_splits(self.variable_splits,
                                                      self.variables,

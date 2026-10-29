@@ -101,12 +101,21 @@ def single_variable_profile(predict,
     if not isinstance(data, pd.DataFrame):
         positions = np.repeat(np.arange(data.shape[0], dtype=np.int64), len(split_points))
         expanded = take_rows(data, positions)
-        original = column_values(expanded, variable)
+        original = column_values(expanded, variable, preserve_nulls=True)
         replacements = np.tile(split_points, data.shape[0])
         if as_eager_dataframe(data).get_column(variable).dtype.is_numeric():
             # Match the legacy pandas profile path, which deliberately widens
             # numeric interventions to float even for integer split points.
-            replacements = replacements.astype(float)
+            # Keep explicit native null interventions separate from NaN.
+            if replacements.dtype.kind == "O" and any(
+                value is None or value is pd.NA for value in replacements
+            ):
+                replacements = np.array([
+                    None if value is None or value is pd.NA else float(value)
+                    for value in replacements
+                ], dtype=object)
+            else:
+                replacements = replacements.astype(float)
         native = set_columns(expanded, {variable: replacements})
         yhat = predict(model, native)
         result = to_pandas(native)
@@ -164,9 +173,15 @@ def calculate_variable_split(data,
         if variable_column.dtype.kind in "iufc":
             observed = variable_column.dropna()
             if observed.empty:
-                # An all-missing feature has one meaningful intervention. Avoid
-                # invalid quantiles and duplicate all-NaN uniform grid points.
-                variable_splits[variable] = np.array([np.nan])
+                # Native float validity distinguishes null from NaN. An
+                # all-missing column can therefore have two interventions.
+                if not isinstance(data, pd.DataFrame):
+                    column = as_eager_dataframe(data).get_column(variable)
+                    absent = column.is_null().to_numpy()
+                    levels = ([None] if absent.any() else []) + ([np.nan] if not absent.all() else [])
+                    variable_splits[variable] = np.array(levels, dtype=object if absent.any() else float)
+                else:
+                    variable_splits[variable] = np.array([np.nan])
                 continue
             if variable_splits_type == 'uniform':
                 column_splits = np.linspace(np.min(observed),

@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from ..._dataframe import take_rows, set_columns, column_values, to_pandas
+from ..._dataframe import take_rows, set_columns, column_values, to_pandas, observation_values
 from ..._random import get_random_state
 from copy import deepcopy
 import multiprocessing as mp
@@ -44,13 +44,15 @@ def calculate_predict_aspect_importance(
     X_prim = get_sample(N, len(variable_groups), sample_method, f, random_state)
 
     # Replace whole masked columns rather than editing individual dataframe rows.
-    new_observation = to_pandas(new_observation)
+    metadata = to_pandas(new_observation)
+    cells = observation_values(new_observation, metadata)
+    new_observation = metadata
     replacements = {}
     for k, variables_set_key in enumerate(variable_groups):
         mask = X_prim[:, k] == 1
         for variable in variable_groups[variables_set_key]:
-            values = replacements.get(variable, column_values(n_sample_changed, variable))
-            replacements[variable] = np.where(mask, new_observation.iloc[0][variable], values)
+            values = replacements.get(variable, column_values(n_sample_changed, variable, preserve_nulls=True))
+            replacements[variable] = np.where(mask, cells[variable], values)
     n_sample_changed = set_columns(n_sample_changed, replacements, copy=False)
 
     # calculate change in predictions
@@ -102,7 +104,9 @@ def calculate_shap_predict_aspect_importance(
          processes,
          random_state
 ):
-    new_observation = to_pandas(new_observation)
+    metadata = to_pandas(new_observation)
+    cells = observation_values(new_observation, metadata)
+    new_observation = metadata
     r = np.random.RandomState(random_state)
     N = min(explainer.data.shape[0], N)
     ids = r.randint(0, explainer.data.shape[0], N)
@@ -113,7 +117,7 @@ def calculate_shap_predict_aspect_importance(
         rng = get_random_state(random_state)
         result_list = [
             iterate_paths(explainer.predict, data_sample,
-                           new_observation, variable_groups, p, b + 1, rng)
+                           new_observation, variable_groups, p, b + 1, rng, cells)
             for b in range(B)]
     else:
         # create number generator for each iteration
@@ -122,7 +126,7 @@ def calculate_shap_predict_aspect_importance(
         pool = mp.get_context('spawn').Pool(processes)
         result_list = pool.starmap_async(iterate_paths,
                                          [(explainer.predict, data_sample,
-                                           new_observation, variable_groups, p, b + 1, generators[b]) for b in range(B)]).get()
+                                           new_observation, variable_groups, p, b + 1, generators[b], cells) for b in range(B)]).get()
         pool.close()
 
     tmp_result = pd.concat(result_list)
@@ -169,12 +173,13 @@ def get_sample(n, p, sample_method="default", f=2, random_state=None):
     return X_prim
 
 
-def iterate_paths(predict_function, data_sample, new_observation, variable_groups, p, b, rng):
+def iterate_paths(predict_function, data_sample, new_observation, variable_groups, p, b, rng, values=None):
     random_path = rng.choice(p, p, replace=False)
-    return get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b)
+    return get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b, values)
 
 
-def get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b):
+def get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b, values=None):
+    values = observation_values(new_observation, new_observation) if values is None else values
     current_data = deepcopy(data_sample)
     if isinstance(current_data, pd.DataFrame):
         current_data = current_data.reset_index(drop=True)
@@ -185,7 +190,7 @@ def get_single_random_path(predict_function, data_sample, new_observation, varia
     for i, candidate in enumerate(random_path):
         variables = variable_groups_varnames[candidate]
         for var in variables:
-            current_data = set_columns(current_data, {var: new_observation.iloc[0][var]}, scalar=True, copy=False)
+            current_data = set_columns(current_data, {var: values[var]}, scalar=True, copy=False)
         yhats[i + 1] = predict_function(current_data).mean()
 
     diffs = np.diff(yhats)

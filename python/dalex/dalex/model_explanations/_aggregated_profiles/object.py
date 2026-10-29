@@ -136,6 +136,9 @@ class AggregatedProfiles(Explanation):
         # select only suitable variables
         all_profiles = all_profiles.loc[all_profiles['_vname_'].isin(vnames), :]
 
+        profiles = ceteris_paribus if isinstance(ceteris_paribus, (list, tuple)) else [ceteris_paribus]
+        utils.check_native_missing_interventions(profiles, vnames, self.type)
+
         all_profiles = utils.prepare_x(all_profiles, self.variable_type)
 
         self.mean_prediction = all_observations['_yhat_'].mean()

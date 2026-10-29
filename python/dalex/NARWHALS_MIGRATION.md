@@ -50,6 +50,32 @@ Polars prediction Series are normalized to NumPy vectors. Invalid multi-dimensio
 NumPy prediction outputs retain the existing warning behavior. Unsupported target
 objects fail validation rather than triggering dataframe conversion.
 
+### Native missing values and exact integer observations
+
+Polars/Arrow floating nulls and NaNs can have different model meanings. Breakdown,
+DALEX Shapley and both Aspect attribution algorithms preserve the observation's
+native validity mask during interventions. Masked Aspect edits retain untouched
+nulls and exact nullable integers, including UInt64 values above the signed-int64
+range. Pandas display labels retain their existing representation; display values
+are not used to infer native missingness. Explicit matrix reconstruction preserves
+exact UInt64 cells when the caller supplies an object/integer matrix.
+
+Ceteris-paribus predictions retain explicit `None` and `np.nan` as distinct native
+numeric interventions. An entirely missing native feature gets its observed null
+and/or NaN states rather than an invented finite grid. The existing pandas numeric
+aggregate result format has one missing key: combining null and NaN interventions,
+or conditioning a missing bin on original data containing both states, raises a
+clear error instead of silently averaging different states. Use `predict_profile`
+for separate interventions, one missing intervention per partial-profile call,
+or normalize missing values explicitly as part of the model's training contract.
+This validation also covers CP objects combined under the same model label.
+
+NumPy/tensor boundaries in external explainers can still coalesce numeric nulls
+and NaNs or round large integers when the external library requires floating
+matrices. These libraries are not certified for models whose prediction depends
+on those distinctions. Native core attribution coverage does not imply that
+every third-party matrix algorithm preserves native scalar semantics.
+
 ## Compatibility change for maintainers
 
 This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.
@@ -64,7 +90,7 @@ copy-on-write array mutation, fairness table reshaping/string group detection an
 breakdown plot string labels. Minimum-pandas CI retains 1.5.3 coverage.
 The `<4` cap is a precautionary major-version policy, not evidence that pandas 4
 breaks DALEX. No pandas 4 release/prerelease/nightly was available when checked
-on 2026-10-27. A separate forward-compatibility run tests the available pandas
+on 2026-10-28. A separate forward-compatibility run tests the available pandas
 3.2 development wheel; that does not certify pandas 4 support.
 
 No new mandatory Polars dependency is imposed on pandas-only users. Install `dalex[polars]`
@@ -90,10 +116,10 @@ archives JUnit results and dependency versions for each matrix entry. Upstream
 dependency installation/import failures must be reported separately from DALEX
 assertion failures; free-threading performance is not inferred from ordinary tests.
 
-The inherited suite skips Aspect tests for ppscore dependency problems and four
-Arena server tests behind a `sys.platform.startswith('ubuntu')` guard (standard
-Linux reports `linux`, so that guard also skips on Linux). Those skips are not
-new backend test skips and are reported rather than counted as passing coverage.
+The full modern-dependency suite skips 18 legacy PPS cases, which run in a separate
+compatible pandas<2 job. Four inherited Arena server tests were previously hidden
+behind `sys.platform.startswith('ubuntu')` (standard Linux reports `linux`); that
+unreachable guard has been removed, and these tests now run in the full matrix.
 
 ### Reproducing Python 3.14t
 

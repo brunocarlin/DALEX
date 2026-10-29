@@ -2,6 +2,9 @@
 
 ### development
 
+* preserve native numeric null/NaN distinctions and exact nullable integers in
+  breakdown, Shapley, Aspect and explicit ceteris-paribus interventions; reject
+  ambiguous numeric aggregate missing bins instead of silently merging states
 * preserve missing numeric interventions in partial/conditional profiles and
   reject unordered missing numeric grids for accumulated effects explicitly
 * accept native fairness membership/mitigation vectors and restore legacy Arena

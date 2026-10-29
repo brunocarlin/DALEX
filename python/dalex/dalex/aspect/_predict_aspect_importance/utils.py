@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
-from ..._dataframe import take_rows, set_columns, column_values, to_pandas, observation_values
+from ..._dataframe import take_rows, set_columns, column_values, to_pandas, observation_values, copy_for_edit
 from ..._random import get_random_state
-from copy import deepcopy
 import multiprocessing as mp
 
 from dalex import _global_checks
@@ -24,7 +23,7 @@ def calculate_predict_aspect_importance(
     N = min(explainer.data.shape[0], N)
     ids = r.randint(0, explainer.data.shape[0], N)
     n_sample = take_rows(explainer.data, ids)
-    n_sample_changed = deepcopy(n_sample)
+    n_sample_changed = copy_for_edit(n_sample)
     if isinstance(n_sample_changed, pd.DataFrame):
         n_sample_changed = n_sample_changed.reset_index(drop=True)
 
@@ -180,7 +179,7 @@ def iterate_paths(predict_function, data_sample, new_observation, variable_group
 
 def get_single_random_path(predict_function, data_sample, new_observation, variable_groups, random_path, b, values=None):
     values = observation_values(new_observation, new_observation) if values is None else values
-    current_data = deepcopy(data_sample)
+    current_data = copy_for_edit(data_sample)
     if isinstance(current_data, pd.DataFrame):
         current_data = current_data.reset_index(drop=True)
     variable_groups_varnames = list(variable_groups.values())

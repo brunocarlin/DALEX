@@ -167,8 +167,15 @@ def to_pandas(data):
     return as_eager_dataframe(data).to_pandas()
 
 
+def copy_for_edit(data):
+    """Own pandas work buffers; native expression edits already return a frame."""
+    return data.copy(deep=True) if isinstance(data, pd.DataFrame) else data
+
+
 def column_values(data, name, *, preserve_nulls=False):
     if isinstance(data, pd.DataFrame):
+        if preserve_nulls and isinstance(data[name].dtype, pd.api.extensions.ExtensionDtype):
+            return data[name].to_numpy(dtype=object, na_value=None)
         return data[name].to_numpy()
     if preserve_nulls:
         column = as_eager_dataframe(data).get_column(name)
@@ -197,8 +204,8 @@ def observation_values(data, metadata):
     values = {name: metadata[name].iloc[0] for name in column_names(data)}
     if not isinstance(data, pd.DataFrame):
         frame = as_eager_dataframe(data)
-        for name in values:
-            if frame.get_column(name).is_null().item(0):
+        for name, absent in zip(frame.columns, frame.head(1).null_count().row(0)):
+            if absent:
                 values[name] = None
     return values
 

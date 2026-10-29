@@ -2,6 +2,10 @@
 
 ### development
 
+* avoid redundant work-frame clones for native expression edits while retaining
+  owned pandas buffers; batch observation validity checks across wide schemas
+* cover Polars-output sklearn preprocessing pipelines feeding sklearn and
+  LightGBM classifiers/regressors, including imputation and unknown categories
 * retain native Arena observation snapshots and exact cross-backend cells;
   inspect feature/target matches without exporting a full mixed feature matrix
 * preserve native numeric null/NaN distinctions and exact nullable integers in

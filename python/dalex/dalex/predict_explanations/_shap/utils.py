@@ -1,11 +1,10 @@
 from ..._dataframe import column_names
 import multiprocessing as mp
-from copy import deepcopy
 from numpy.random import SeedSequence, default_rng
 
 import numpy as np
 import pandas as pd
-from ..._dataframe import set_columns, to_pandas, observation_values
+from ..._dataframe import set_columns, to_pandas, observation_values, copy_for_edit
 from ..._random import get_random_state
 
 
@@ -97,7 +96,7 @@ def get_single_random_path(predict, model, data, label, new_observation, random_
         new_observation = to_pandas(new_observation)
     values = observation_values(native_observation, new_observation) if values is None else values
     names = np.asarray(column_names(data))
-    current_data = deepcopy(data)
+    current_data = copy_for_edit(data)
     yhats = np.empty(len(random_path) + 1)
     yhats[0] = predict(model, current_data).mean()
     for i, candidate in enumerate(random_path):

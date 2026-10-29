@@ -1,5 +1,6 @@
 """Native floating nulls and NaNs are distinct model inputs."""
 import numpy as np
+import pandas as pd
 import polars as pl
 import pyarrow as pa
 import pytest
@@ -19,8 +20,8 @@ class NullNanModel:
 
 class ExactIntegerModel:
     def predict(self, data):
-        values = data["x"].to_list() if isinstance(data, pl.DataFrame) else data["x"].to_pylist()
-        return np.array([7. if value is None else float(value % 97) for value in values]) + data["z"].to_numpy()
+        values = data["x"].to_list() if isinstance(data, (pl.DataFrame, pd.DataFrame)) else data["x"].to_pylist()
+        return np.array([7. if value is None or value is pd.NA else float(value % 97) for value in values]) + data["z"].to_numpy()
 
 
 @pytest.mark.parametrize("backend", ["polars", "arrow"])
@@ -75,7 +76,7 @@ def test_attributions_keep_native_null_distinct_from_nan(backend, row, family):
         np.testing.assert_array_equal(data["z"].to_numpy(), before[3])
 
 
-@pytest.mark.parametrize("backend", ["polars", "arrow"])
+@pytest.mark.parametrize("backend", ["pandas", "polars", "arrow"])
 @pytest.mark.parametrize("row", [0, 1])
 @pytest.mark.parametrize("unsigned", [False, True])
 @pytest.mark.parametrize("family", ["break_down", "shap", "aspect_default", "aspect_shap"])
@@ -84,7 +85,7 @@ def test_nullable_large_integer_attributions_do_not_round_cells(backend, row, un
     data = pl.DataFrame({"x": pl.Series([base + 1, None, base + 3, base + 5] * 4,
                                        dtype=pl.UInt64 if unsigned else pl.Int64),
                          "z": [2., 5., 1., 4.] * 4})
-    data = data if backend == "polars" else data.to_arrow()
+    data = data.to_pandas(use_pyarrow_extension_array=True) if backend == 'pandas' else data if backend == "polars" else data.to_arrow()
     model = ExactIntegerModel()
     exp = dx.Explainer(model, data, model.predict(data), model_type="regression", verbose=False)
     observation = take_rows(data, [row])

@@ -1,9 +1,8 @@
 from ..._dataframe import column_names
-from copy import deepcopy
 
 import numpy as np
 import pandas as pd
-from ..._dataframe import set_columns, to_pandas, observation_values
+from ..._dataframe import set_columns, to_pandas, observation_values, copy_for_edit
 
 
 def local_interactions(explainer,
@@ -107,7 +106,7 @@ def calculate_1d_changes(explainer,
     values = observation_values(new_observation, new_observation) if values is None else values
     yhats = np.empty(len(column_names(explainer.data)), dtype=object)
     for i, col in enumerate(column_names(explainer.data)):
-        current_data = deepcopy(explainer.data)
+        current_data = copy_for_edit(explainer.data)
         current_data = set_columns(current_data, {col: values[col]}, scalar=True, copy=False)
         yhats[i] = explainer.predict(current_data).mean()
 
@@ -123,7 +122,7 @@ def calculate_2d_changes(explainer,
     average_yhats_norm = np.empty(inds.shape[0])
 
     for i in range(inds.shape[0]):
-        current_data = deepcopy(explainer.data)
+        current_data = copy_for_edit(explainer.data)
         current_data = set_columns(current_data, {
             column_names(explainer.data)[int(inds.iloc[i, j])]: values[column_names(explainer.data)[int(inds.iloc[i, j])]]
             for j in (0, 1)
@@ -174,7 +173,7 @@ def calculate_contributions_along_path(explainer,
                                        keep_distributions, values=None):
     values = observation_values(new_observation, new_observation) if values is None else values
     open_variables = set(np.arange(explainer.data.shape[1]))
-    current_data = deepcopy(explainer.data)
+    current_data = copy_for_edit(explainer.data)
     step = 0
     yhats = []
     yhats_mean = []

@@ -55,6 +55,36 @@ An estimator's own internal NumPy/Arrow conversion still contributes to runtime.
 Preserving a Polars input does not make inference itself faster. The committed
 benchmarks separate dataframe work from inference and include memory results.
 
+## sklearn preprocessing with Polars outputs
+
+An sklearn `ColumnTransformer` can emit Polars batches for the final estimator.
+DALEX still explains the original features, including one-hot encoded categories.
+The tests exercise this route with sklearn and LightGBM regression/classification,
+numeric imputation, unknown categories, profiles and Kernel SHAP. This example uses
+the `features`, `target` and imports from the numeric example above:
+
+```python
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+preprocessing = ColumnTransformer([
+    ("numeric", make_pipeline(SimpleImputer(), StandardScaler()), ["x", "z", "u"]),
+]).set_output(transform="polars")
+pipeline = make_pipeline(
+    preprocessing,
+    HistGradientBoostingRegressor(max_iter=20, random_state=42),
+).fit(features, target.to_numpy())
+explainer = dx.Explainer(pipeline, features, target, verbose=False)
+importance = explainer.model_parts(N=500, B=3, random_state=42)
+```
+
+Polars output support requires sklearn >=1.4; the integration matrix exercises
+the versions available on supported Python interpreters. Arrow input selection
+in older sklearn versions has separate limitations; the explicit positional
+preprocessing recipe below remains available for that case.
+
 ## Categorical LightGBM features
 
 LightGBM 4.7's native Arrow-stream path rejects raw dictionary/Enum columns. Use

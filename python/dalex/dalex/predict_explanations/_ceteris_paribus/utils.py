@@ -2,6 +2,7 @@ import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
+import narwhals.stable.v2 as nw
 from ..._dataframe import as_eager_dataframe, column_values, set_columns, take_rows, to_pandas
 from tqdm import tqdm
 
@@ -101,7 +102,7 @@ def single_variable_profile(predict,
     if not isinstance(data, pd.DataFrame):
         positions = np.repeat(np.arange(data.shape[0], dtype=np.int64), len(split_points))
         expanded = take_rows(data, positions)
-        original = column_values(expanded, variable, preserve_nulls=True)
+        original = column_values(expanded, variable)
         replacements = np.tile(split_points, data.shape[0])
         if as_eager_dataframe(data).get_column(variable).dtype.is_numeric():
             # Match the legacy pandas profile path, which deliberately widens
@@ -138,6 +139,27 @@ def single_variable_profile(predict,
     new_data.loc[:, '_ids_'] = ids
 
     return new_data
+
+
+def native_numeric_missing_states(data, variable_splits):
+    """Keep validity provenance outside the backward-compatible result table."""
+    if isinstance(data, pd.DataFrame):
+        return {}
+    frame = as_eager_dataframe(data)
+    states = {}
+    for variable, splits in variable_splits.items():
+        if not any(value is None or value is pd.NA or value is pd.NaT or
+                   (isinstance(value, (float, np.floating)) and np.isnan(value)) for value in splits):
+            continue
+        column = frame.get_column(variable)
+        kinds = set()
+        if column.dtype.is_numeric():
+            if column.null_count():
+                kinds.add('null')
+            if isinstance(column.dtype, (nw.Float32, nw.Float64)) and column.is_nan().any():
+                kinds.add('nan')
+        states[variable] = kinds
+    return states
 
 
 def calculate_variable_split(data,

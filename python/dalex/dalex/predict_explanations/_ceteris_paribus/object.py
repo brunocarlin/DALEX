@@ -124,6 +124,8 @@ class CeterisParibus(Explanation):
 
         y = checks.check_y(y)
 
+        self._native_missing_states = utils.native_numeric_missing_states(self.new_observation, self.variable_splits)
+
         self.result, self.new_observation = utils.calculate_ceteris_paribus(
             explainer,
             self.new_observation,

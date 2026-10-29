@@ -33,11 +33,7 @@ def check_native_missing_interventions(profiles, variables, profile_type):
             interventions, originals = states.setdefault(key, (set(), set()))
             interventions.update(missing)
             if profile_type == 'conditional':
-                for value in rows.drop_duplicates('_ids_')['_original_']:
-                    if value is None or value is pd.NA or value is pd.NaT:
-                        originals.add('null')
-                    elif isinstance(value, (float, np.floating)) and np.isnan(value):
-                        originals.add('nan')
+                originals.update(getattr(profile, '_native_missing_states', {}).get(variable, set()))
     for (variable, _), (interventions, originals) in states.items():
         if len(interventions) > 1 or (profile_type == 'conditional' and interventions and len(originals) > 1):
             raise ValueError(

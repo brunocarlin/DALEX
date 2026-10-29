@@ -76,6 +76,13 @@ matrices. These libraries are not certified for models whose prediction depends
 on those distinctions. Native core attribution coverage does not imply that
 every third-party matrix algorithm preserves native scalar semantics.
 
+Automatic ceteris-paribus grids that include observation values preserve native
+null cells and include a finite observation even when the reference feature is
+entirely missing. Arena HTTP/static JSON converts nonfinite display numbers and
+nullable sentinels to JSON null without modifying cached results or native model
+inputs. Browser display numeric precision remains separate from native feature
+precision, particularly for integers above JavaScript's exact-integer range.
+
 Arena retains a buffer-sharing native snapshot of pushed observations alongside
 its pandas display table. Same-backend model requests select directly from that
 snapshot; cross-backend requests reconstruct per-column object cells, preserving

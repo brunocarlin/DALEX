@@ -127,8 +127,13 @@ def single_variable_profile(predict,
     ids = np.repeat(data.index.values, split_points.shape[0])
     new_data = data.loc[ids, :]
     original = new_data.loc[:, variable].copy()
-    if pd.api.types.is_numeric_dtype(new_data[variable]) and not pd.api.types.is_bool_dtype(new_data[variable]):
-        new_data[variable] = new_data[variable].astype('float')
+    if new_data[variable].dtype.kind in 'iufc':
+        try:
+            new_data[variable] = new_data[variable].astype('float')
+        except TypeError:
+            if not isinstance(new_data[variable].dtype, pd.ArrowDtype):
+                raise
+            new_data[variable] = np.asarray(new_data[variable].array.__arrow_array__().to_numpy(), dtype=float)
     new_data.loc[:, variable] = np.tile(split_points, data.shape[0])
 
     yhat = predict(model, new_data)
@@ -201,20 +206,26 @@ def calculate_variable_split(data,
                     column = as_eager_dataframe(data).get_column(variable)
                     absent = column.is_null().to_numpy()
                     levels = ([None] if absent.any() else []) + ([np.nan] if not absent.all() else [])
-                    variable_splits[variable] = np.array(levels, dtype=object if absent.any() else float)
+                    column_splits = np.array(levels, dtype=object if absent.any() else float)
                 else:
-                    variable_splits[variable] = np.array([np.nan])
-                continue
-            if variable_splits_type == 'uniform':
+                    column_splits = np.array([np.nan])
+            elif variable_splits_type == 'uniform':
                 column_splits = np.linspace(np.min(observed),
                                             np.max(observed),
                                             grid_points)
             else:
                 column_splits = np.unique(np.quantile(observed, probs))
             if variable_splits_with_obs:
-                column_splits = np.concatenate((column_splits, column_values(new_observation, variable)))
-                column_splits = np.unique(column_splits)
-                column_splits = np.sort(column_splits, kind='mergesort')
+                values = np.concatenate((column_splits, column_values(new_observation, variable, preserve_nulls=True)))
+                nulls = [value is None or value is pd.NA or value is pd.NaT for value in values]
+                if any(nulls):
+                    numeric = np.unique(np.asarray([value for value, absent in zip(values, nulls) if not absent], dtype=float))
+                    if isinstance(data, pd.DataFrame):
+                        column_splits = np.unique(np.append(numeric, np.nan))
+                    else:
+                        column_splits = np.array(numeric.tolist() + [None], dtype=object)
+                else:
+                    column_splits = np.sort(np.unique(values), kind='mergesort')
 
             variable_splits[variable] = column_splits
         else:

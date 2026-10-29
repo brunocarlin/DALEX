@@ -11,6 +11,25 @@ def convert(o):
     if isinstance(o, np.generic): return o.item()  
     raise TypeError
 
+
+def serialize_json(value):
+    """Represent nonfinite display values as JSON null without editing sources."""
+    def normalize(item):
+        if item is pd.NA or item is pd.NaT:
+            return None
+        if isinstance(item, np.ndarray):
+            item = item.tolist()
+        elif isinstance(item, np.generic):
+            item = item.item()
+        if isinstance(item, float) and not np.isfinite(item):
+            return None
+        if isinstance(item, dict):
+            return {key: normalize(value) for key, value in item.items()}
+        if isinstance(item, (list, tuple)):
+            return [normalize(value) for value in item]
+        return item
+    return json.dumps(normalize(value), default=convert, allow_nan=False)
+
 def start_server(arena, host, port, disable_logs, ready=None):
     from flask import Flask, request, abort, Response
     from werkzeug.serving import ThreadedWSGIServer
@@ -49,7 +68,7 @@ def start_server(arena, host, port, disable_logs, ready=None):
             'availablePlots': [plot.info for plot in arena.get_supported_plots()],
             'options': { 'attributes': arena.enable_attributes, 'customParams': arena.enable_custom_params }
         }
-        return Response(json.dumps(result, default=convert), content_type='application/json')
+        return Response(serialize_json(result), content_type='application/json')
 
     def get_params(request):
         result = {}
@@ -88,7 +107,7 @@ def start_server(arena, host, port, disable_logs, ready=None):
     @app.route("/<string:plot_type>", methods=['GET'])
     def get_plot(plot_type):
         if plot_type == 'timestamp':
-            return Response(json.dumps({'timestamp': arena.timestamp * 1000}, default=convert), content_type='application/json')
+            return Response(serialize_json({'timestamp': arena.timestamp * 1000}), content_type='application/json')
         elif plot_type == 'shutdown':
             if request.args.get('token') != shutdown_token:
                 abort(403)
@@ -101,7 +120,7 @@ def start_server(arena, host, port, disable_logs, ready=None):
             return
         try:
             result = arena.plots_manager.get_plot(plot_type, params, cache=not custom_params)
-            return Response(json.dumps(result.serialize(), default=convert), content_type='application/json')
+            return Response(serialize_json(result.serialize()), content_type='application/json')
         except Exception as e:
             abort(404)
             return
@@ -112,7 +131,7 @@ def start_server(arena, host, port, disable_logs, ready=None):
             abort(404)
             return
         result = arena.get_param_attributes(param_type, param_label)
-        return Response(json.dumps(result, default=convert), content_type='application/json')
+        return Response(serialize_json(result), content_type='application/json')
 
     if ready is not None:
         ready.set()

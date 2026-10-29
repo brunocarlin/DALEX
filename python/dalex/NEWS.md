@@ -2,6 +2,9 @@
 
 ### development
 
+* include actual nullable observation cells in automatic profile grids, including
+  observations outside an all-missing reference feature; emit valid Arena JSON
+  with null display values for nonfinite numbers without changing model inputs
 * preserve physical Arrow features despite pandas index metadata, refresh stale
   pandas dtype hints after numeric promotions, and retain callback serialization
   when prediction/residual adapters are reused

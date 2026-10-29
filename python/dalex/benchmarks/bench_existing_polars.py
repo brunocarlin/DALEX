@@ -21,7 +21,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from threadpoolctl import threadpool_limits
 
 import dalex as dx
-from _benchmark_utils import RSS, summary
+from _benchmark_utils import RSS, summary, source_identity
 
 
 def explain(exp, family, sample, rounds):
@@ -106,6 +106,7 @@ def main():
               "model_and_blas_threads": 1,
               "gil_enabled": getattr(sys, "_is_gil_enabled", lambda: None)(),
               "source_revision": args.source_revision,
+              "library_source": source_identity(dx),
               "fitted_model_sha256": hashlib.sha256(Path(args.model_file).read_bytes()).hexdigest() if args.model_file else None,
               "versions": {name: metadata.version(name) for name in packages},
               "input_origin": "Polars; original creation/training excluded; pandas conversion included",

@@ -12,6 +12,8 @@ import multiprocessing as mp
 import platform
 import sys
 import traceback
+import pickle
+import hashlib
 from pathlib import Path
 from time import perf_counter
 
@@ -23,7 +25,7 @@ from threadpoolctl import threadpool_limits
 
 import dalex as dx
 from dalex._dataframe import shuffle_columns, take_rows
-from _benchmark_utils import RSS, summary
+from _benchmark_utils import RSS, summary, source_identity
 
 
 class TimedPredict:
@@ -105,7 +107,7 @@ def weighted_rmse(y, prediction, sample_weight=None):
     return np.sqrt(np.average((y-prediction)**2, weights=sample_weight))
 
 
-def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefix="dalex-narwhals-benchmark", model_kind="sklearn-numpy", sample_limit=10_000):
+def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefix="dalex-narwhals-benchmark", model_kind="sklearn-numpy", sample_limit=10_000, source_revision="unspecified"):
     report = {'environment': {'python': sys.version, 'platform': platform.platform(),
               'polars_thread_pool_size': pl.thread_pool_size(),
               'gil_enabled': getattr(sys, '_is_gil_enabled', lambda: None)(),
@@ -116,7 +118,7 @@ def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefi
                          'threads_estimator': 1, 'rss_poll_seconds': .002,
                          'conversion_included': True, 'warmup_trials_per_backend': 1, 'warm_runtime_in_each_worker': warm_runtime,
                          'memory_note': 'Sampled process RSS, including interpreter/dependencies; peak may be underestimated.'},
-              'datasets': []}
+              'source_revision': source_revision, 'library_source': source_identity(dx), 'datasets': []}
     report['method']['model_kind'] = model_kind
     report['method']['training_input'] = 'numpy' if model_kind == 'sklearn-numpy' else 'polars'
     if model_kind == 'lightgbm-native':
@@ -164,6 +166,7 @@ def run(sizes, n_features, repetitions, rounds, warm_runtime=False, output_prefi
         ratios = {phase: stats['pandas'][phase]['seconds']['median']/stats['polars'][phase]['seconds']['median']
                   for phase in ('end_to_end','dataframe')}
         report['datasets'].append({'rows':n,'max_absolute_parity_error':max_error,
+                                   'fitted_model_sha256':hashlib.sha256(pickle.dumps(model)).hexdigest(),
                                    'passed_numerical_parity':True,'trials':trials,'summary':stats,
                                    'pandas_time_over_polars_time':ratios})
         print(f'{n} rows: pandas/Polars time ratios {ratios}; max parity error {max_error}', flush=True)
@@ -196,7 +199,8 @@ if __name__ == '__main__':
     parser.add_argument('--output-prefix', default='dalex-narwhals-benchmark')
     parser.add_argument('--model', choices=['sklearn-numpy', 'sklearn-native', 'lightgbm-native'], default='sklearn-numpy')
     parser.add_argument('--sample-limit', type=int, default=10_000)
+    parser.add_argument('--source-revision', default='unspecified')
     args = parser.parse_args()
     if args.sample_limit < 1:
         parser.error('--sample-limit must be positive')
-    run(args.sizes,args.features,args.repetitions,args.rounds,args.warm_runtime,args.output_prefix,args.model,args.sample_limit)
+    run(args.sizes,args.features,args.repetitions,args.rounds,args.warm_runtime,args.output_prefix,args.model,args.sample_limit,args.source_revision)

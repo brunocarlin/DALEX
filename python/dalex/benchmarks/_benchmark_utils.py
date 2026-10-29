@@ -1,8 +1,24 @@
 """Benchmark measurement helpers independent of the DALEX implementation."""
 import threading
+import hashlib
+from pathlib import Path
 
 import numpy as np
 import psutil
+
+
+def source_identity(package):
+    """Fingerprint imported Python sources, including archived/editable installs."""
+    root = Path(package.__file__).resolve().parent
+    files = sorted(root.rglob('*.py'))
+    digest = hashlib.sha256()
+    for file in files:
+        digest.update(file.relative_to(root).as_posix().encode())
+        digest.update(b'\0')
+        digest.update(file.read_bytes().replace(b'\r\n', b'\n'))
+        digest.update(b'\0')
+    return {'python_modules': len(files), 'python_source_sha256': digest.hexdigest(),
+            'normalization': 'sorted relative paths and source bytes, CRLF normalized to LF'}
 
 
 class RSS:

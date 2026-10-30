@@ -9,17 +9,17 @@ Pandas remains required for historical default outputs and plotting preparation.
 See [the implementation contract](FULL_MIGRATION.md) and source-stamped reports
 before treating any particular revision as validated.
 
-## Supported and pending paths
+## Native computation and compatibility boundaries
 
 | API | Native feature batches | Remaining pandas boundary |
 |---|---|---|
 | prediction / residuals | yes | target/prediction vectors use NumPy |
-| permutation importance, including grouped features | yes | result and raw permutation tables |
-| model performance | yes | metric and residual result tables |
-| residual diagnostics | yes | feature/result table for plotting |
-| breakdown / breakdown interactions | yes | observation metadata and contributions |
-| DALEX Shapley values (`type='shap'`) | yes | observation metadata and contributions |
-| ceteris paribus | yes | profile table after prediction |
+| permutation importance, including grouped features | yes | lazy public views; native result/permutation reductions |
+| model performance | yes | lazy public views; native metric/residual tables |
+| residual diagnostics | yes | lazy plotting view; native snapshot computation |
+| breakdown / breakdown interactions | yes | lazy public views; native contributions and metadata |
+| DALEX Shapley values (`type='shap'`) | yes | lazy public views; native contributions and metadata |
+| ceteris paribus | yes | lazy public view; native typed profile partitions |
 | partial, accumulated, conditional profiles | yes | lazy legacy view; native typed aggregation |
 | SHAP kernel/tree/linear/deep/gradient wrappers, LIME, model surrogates | yes | explicit NumPy/tensor boundaries of third-party libraries |
 | Aspect importance/triplots | yes | lazy legacy matrices/tables; optional external PPS |
@@ -86,6 +86,12 @@ UInt64 precision above 2**63. Numeric accumulated effects require finite splits:
 missing values have no numeric ordering. Mixed integer/float native aggregate
 exports require partitions when combination would round an integer.
 
+Decimal counterfactuals retain Decimal values instead of passing through a
+floating grid. Automatic numeric uniform/quantile interpolation retains the
+legacy floating policy; use explicit integer splits for models sensitive to
+large-integer precision. Clean reference columns avoid redundant filtering and
+copies, and expanded CP batches normalize each split point once per grid.
+
 NumPy/tensor boundaries in external explainers can still coalesce numeric nulls
 and NaNs or round large integers when the external library requires floating
 matrices. These libraries are not certified for models whose prediction depends
@@ -135,7 +141,7 @@ and default-restoration behavior.
 
 This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.
 Python 3.14 is the primary development and benchmark version. CI tests 3.10–3.14
-on Linux and macOS, plus required Linux 3.14t with `PYTHON_GIL=0`.
+on Linux and macOS, Windows 3.14, plus required Linux 3.14t with `PYTHON_GIL=0`.
 The regular matrix retains pandas 2, with an additional Python 3.14/pandas 3 job.
 Scientific extensions require wheels in CI so unavailable free-threaded wheels
 produce a clear dependency-install failure instead of an unbounded source build. Maintainers should explicitly
@@ -205,7 +211,7 @@ Gradient SHAP's global NumPy APIs use a cooperating lock/state scope; sampled
 Kernel SHAP resumes the legacy state after background sampling. Threaded tests
 compare serial/concurrent values and verify global RNG isolation. Unseeded calls,
 arbitrary external RNG consumers and arbitrary model-library concurrency remain
-outside that guarantee. See [current review evidence](benchmarks/results/ROUND2_REVIEW.md).
+outside that guarantee. See [current review evidence](benchmarks/results/FULL_MIGRATION_REVIEW.md).
 
 ## Benchmark protocol
 
@@ -236,8 +242,10 @@ Defaults: 1k, 10k, 100k rows, ten float64 features, five measured trials, three
 permutation rounds, at most 10k sampled rows. CI uses two sizes and three trials.
 Ratios above one favor Polars; regressions below one must also be reported.
 
-Current results: [benchmarks/results/ROUND2_REVIEW.md](benchmarks/results/ROUND2_REVIEW.md).
-Earlier snapshots: [benchmarks/results/PHASE2_VALIDATION.md](benchmarks/results/PHASE2_VALIDATION.md).
+Current results: [full migration review](benchmarks/results/FULL_MIGRATION_REVIEW.md)
+and [benchmark tables](benchmarks/results/FULL_MIGRATION_BENCHMARKS.md).
+Earlier snapshots: [round two](benchmarks/results/ROUND2_REVIEW.md) and
+[phase two](benchmarks/results/PHASE2_VALIDATION.md).
 
 ## Remaining-family migration and performance attribution
 

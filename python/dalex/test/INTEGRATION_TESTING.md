@@ -42,7 +42,7 @@ legacy views and plotting are exercised after that scope. Thus the tests check
 both backend preservation and the compatible pandas publication boundary.
 
 Independent expected-value tests cover typed UInt64 grids above 2**63, exact
-nanosecond values, native null versus NaN, missing/unused groups, mutation and
+nanosecond values, finite Decimal interventions, native null versus NaN, missing/unused groups, mutation and
 metadata. `test_native_profile_grid_scaling.py` also guards against exporting
 every reference cell to Python merely to construct an automatic numeric grid.
 Aspect/dendrogram tests reject browser-renderer calls and preserve the original

@@ -1,8 +1,10 @@
 # Full Narwhals migration: implementation contract and progress
 
-This is the expanded work following the native-feature migration. It is **in
-progress**, and the earlier source-stamped validation reports do not certify new
-implementation commits automatically. PR #587 remains draft for manual review.
+This defines the expanded migration following the native-feature contribution.
+The [source-stamped review](benchmarks/results/FULL_MIGRATION_REVIEW.md) records
+the validated implementation, benchmarks and remaining boundaries. Earlier
+reports do not certify later commits automatically. PR #587 remains draft for
+manual review.
 
 ## Compatibility contract
 
@@ -43,7 +45,7 @@ implementation commits automatically. PR #587 remains draft for manual review.
 
 ## Evidence and completion gates
 
-The following are gates, not claims that all have been completed:
+The review report records the evidence for these criteria and its exact scope:
 
 1. Native storage and reductions for importance, contributions, profiles,
    performance/diagnostics, Aspect, fairness and Arena.
@@ -85,6 +87,9 @@ The following are gates, not claims that all have been completed:
 - Aggregated profiles retain exact large-integer grids and separate native
   null/NaN bins and memberships. Mixed unsafe scalar layouts use explicit typed
   partitions, with a compatible combined pandas publication.
+- Decimal CP interventions retain Decimal values. Automatic numeric grids keep
+  legacy floating interpolation; supply explicit integer splits for models that
+  depend on exact large-integer counterfactuals.
 - Arena integration tests cover real models through registration, background
   threads, incremental updates, resource/plot exports, exact timestamp metadata,
   legacy dictionary access and mutation, pickle and strict JSON. EDA handles
@@ -110,6 +115,9 @@ The following are gates, not claims that all have been completed:
   views, independent exports, plots and pickle. Pandas inputs retain the exact
   original external classes. External fitting/explanation algorithms use their
   explicit numeric matrix boundary.
+- Custom explanation labels update native storage, including the historical
+  performance index/added-column layout. Numeric profile grids avoid copying
+  clean reference columns, and CP normalizes split values once per grid.
 - Private reference utilities and pandas-only helper branches remain for
   compatibility; public fit paths use the native implementations above. Plot
   preparation, legacy writable tables, pandas scalar display formatting and

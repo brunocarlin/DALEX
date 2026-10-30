@@ -114,7 +114,7 @@ def test_arena_still_excludes_a_feature_identical_to_the_target(backend):
 def test_custom_arena_http_observation_avoids_full_feature_conversion(backend, unsigned, monkeypatch):
     import json
     import requests
-    import dalex.arena.server as server
+    import narwhals.stable.v2 as nw
     from dalex.arena.static import get_free_port
     data = pl.DataFrame({'x': pl.Series([2**63 + 1, None, 2**63 + 3] * 40, dtype=pl.UInt64) if unsigned
                          else pl.Series([1., None, np.nan] * 40), 'z': [2., 5., 1.] * 40})
@@ -123,11 +123,9 @@ def test_custom_arena_http_observation_avoids_full_feature_conversion(backend, u
     exp = dx.Explainer(model, frame, model.predict(frame), model_type='regression', verbose=False, label='model')
     arena = dx.Arena(precalculate=False, enable_attributes=False)
     arena.push_model(exp)
-    original_convert = server.to_pandas
-    def small_display_table(batch):
-        assert len(batch) <= 1, 'Custom observations must not materialize the full model dataset'
-        return original_convert(batch)
-    monkeypatch.setattr(server, 'to_pandas', small_display_table)
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Native HTTP observations must not construct a pandas display table')
+    monkeypatch.setattr(nw.DataFrame, 'to_pandas', forbidden)
     port = get_free_port()
     assert port is not None
     arena.run_server(host='127.0.0.1', port=port)

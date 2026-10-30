@@ -192,18 +192,20 @@ def calculate_variable_split(data,
     probs = np.linspace(0, 1, grid_points)
 
     for variable in variables:
-        # A Series provides the same missing-value semantics for every backend.
-        # np.min(ndarray) propagates NaN while np.min(pandas.Series) skips it.
-        variable_column = (data.loc[:, variable] if isinstance(data, pd.DataFrame)
-                           else pd.Series(column_values(data, variable)))
+        column = as_eager_dataframe(data).get_column(variable)
+        dtype = column.dtype
         # pandas 1.5 does not classify numeric ArrowDtype via is_numeric_dtype.
-        if variable_column.dtype.kind in "iufc":
-            observed = variable_column.dropna()
-            if observed.empty:
+        numeric = data[variable].dtype.kind in 'iufc' if isinstance(data, pd.DataFrame) else (
+            dtype.is_numeric() and not isinstance(dtype, nw.Decimal))
+        if numeric:
+            values = column_values(data, variable, preserve_nulls=True)
+            observed = np.asarray([value for value in values if value is not None and value is not pd.NA
+                                   and value is not pd.NaT and not (isinstance(value, (float, np.floating))
+                                                                  and np.isnan(value))])
+            if not len(observed):
                 # Native float validity distinguishes null from NaN. An
                 # all-missing column can therefore have two interventions.
                 if not isinstance(data, pd.DataFrame):
-                    column = as_eager_dataframe(data).get_column(variable)
                     absent = column.is_null().to_numpy()
                     levels = ([None] if absent.any() else []) + ([np.nan] if not absent.all() else [])
                     column_splits = np.array(levels, dtype=object if absent.any() else float)
@@ -231,6 +233,10 @@ def calculate_variable_split(data,
 
             variable_splits[variable] = column_splits
         else:
-            variable_splits[variable] = pd.unique(variable_column)
+            # Narwhals keeps the first-observed order without a pandas Series
+            # allocation. Use the exact scalar export for dictionary/temporal
+            # columns rather than a backend's lossy generic NumPy conversion.
+            unique = column.unique(maintain_order=True).to_frame().to_native()
+            variable_splits[variable] = column_values(unique, variable, preserve_nulls=True)
 
     return variable_splits

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import narwhals.stable.v2 as nw
 from tqdm import tqdm
 
 
@@ -15,8 +16,13 @@ def check_native_missing_interventions(profiles, variables, profile_type):
     for profile in profiles:
         if not getattr(profile, "_native_features", False):
             continue
+        frames = {name: nw.from_native(data) for name, data in profile._native_profile_frames()}
         for variable in variables:
-            if variable not in profile.variable_splits or not pd.api.types.is_numeric_dtype(profile.result[variable]):
+            if variable not in profile.variable_splits or variable not in frames:
+                continue
+            frame = frames[variable]
+            dtype = frame.schema[variable]
+            if not (dtype.is_numeric() or isinstance(dtype, nw.Boolean)) or isinstance(dtype, nw.Decimal):
                 continue
             missing = set()
             for value in profile.variable_splits[variable]:
@@ -26,14 +32,14 @@ def check_native_missing_interventions(profiles, variables, profile_type):
                     missing.add('nan')
             if not missing:
                 continue
-            rows = profile.result.loc[profile.result['_vname_'] == variable]
-            if rows.empty:
+            if not len(frame):
                 continue
-            key = (variable, rows['_label_'].iloc[0])
-            interventions, originals = states.setdefault(key, (set(), set()))
-            interventions.update(missing)
-            if profile_type == 'conditional':
-                originals.update(getattr(profile, '_native_missing_states', {}).get(variable, set()))
+            for label in frame['_label_'].unique(maintain_order=True).to_list():
+                key = (variable, label)
+                interventions, originals = states.setdefault(key, (set(), set()))
+                interventions.update(missing)
+                if profile_type == 'conditional':
+                    originals.update(getattr(profile, '_native_missing_states', {}).get(variable, set()))
     for (variable, _), (interventions, originals) in states.items():
         if len(interventions) > 1 or (profile_type == 'conditional' and interventions and len(originals) > 1):
             raise ValueError(

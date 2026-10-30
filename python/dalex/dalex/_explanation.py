@@ -3,6 +3,23 @@ import narwhals.stable.v2 as nw
 from narwhals.dependencies import is_pandas_dataframe
 
 
+def export_result_frame(data, backend):
+    """Export typed values without a Python-scalar datetime/nullable round-trip."""
+    frame = nw.from_native(data, eager_only=True)
+    namespace = nw.get_native_namespace(frame)
+    if backend == 'native' or namespace.__name__ == backend:
+        return frame.clone().to_native()
+    if backend == 'pandas':
+        from ._dataframe import to_pandas
+        return to_pandas(data)
+    if not all(isinstance(name, str) for name in frame.columns):
+        raise ValueError('This backend requires string column names; retain the pandas result for non-string labels')
+    # Scalar dictionaries can truncate nanosecond timestamps and erase nullable
+    # extension types. Arrow carries typed buffers across this explicit boundary.
+    arrow = frame.to_arrow().select(frame.columns).replace_schema_metadata(None)
+    return nw.from_arrow(arrow, backend=backend).to_native()
+
+
 class CompatibilityTable:
     """Materialize legacy pandas tables only when their public attribute is read.
 
@@ -22,6 +39,9 @@ class CompatibilityTable:
             return value
         key = '_compatibility_' + self.name
         if key not in instance.__dict__:
+            if callable(getattr(type(value), '_dalex_pandas_view', None)):
+                instance.__dict__[key] = value._dalex_pandas_view()
+                return instance.__dict__[key]
             try:
                 frame = nw.from_native(value, eager_only=True)
             except TypeError:
@@ -38,7 +58,7 @@ class CompatibilityTable:
 class Explanation(ABC):
     result = CompatibilityTable()
 
-    def result_as(self, backend='native', *, table='result'):
+    def result_as(self, backend='native', *, table='result', partition=None):
         """Export an independent result table without changing the legacy API.
 
         ``native`` retains the table's computation backend. Explicit backends
@@ -55,6 +75,11 @@ class Explanation(ABC):
         value = self.__dict__.get('_compatibility_' + table, original)
         if value is None:
             return None
+        if callable(getattr(type(original), '_dalex_native_view', None)):
+            cached = self.__dict__.get('_compatibility_' + table)
+            return original._dalex_native_view(backend, partition=partition, pandas_view=cached)
+        if partition is not None:
+            raise ValueError('This result table has no partitions')
         try:
             frame = nw.from_native(value, eager_only=True)
         except TypeError:
@@ -68,9 +93,7 @@ class Explanation(ABC):
             namespace = nw.get_native_namespace(nw.from_native(original, eager_only=True))
         elif namespace.__name__ != backend:
             namespace = backend
-        if namespace == nw.get_native_namespace(frame):
-            return frame.clone().to_native()
-        return nw.from_dict(frame.to_dict(as_series=False), backend=namespace).to_native()
+        return export_result_frame(value, namespace.__name__ if not isinstance(namespace, str) else namespace)
 
     @abstractmethod
     def fit(self):
@@ -78,3 +101,48 @@ class Explanation(ABC):
     @abstractmethod
     def plot(self):
         pass
+
+
+class EmptyTable:
+    """Unfitted explanations retain a lazily created empty pandas result."""
+
+    def _dalex_pandas_view(self):
+        import pandas as pd
+        return pd.DataFrame()
+
+    def _dalex_native_view(self, backend, *, partition=None, pandas_view=None):
+        if partition is not None:
+            raise ValueError('This result table has no partitions')
+        if pandas_view is not None:
+            frame = nw.from_native(pandas_view)
+            if backend in ('native', 'pandas'):
+                return frame.clone().to_native()
+            return nw.from_dict(frame.to_dict(as_series=False), backend=backend).to_native()
+        return nw.from_dict({}, backend='pandas' if backend == 'native' else backend).to_native()
+
+
+class IndexedTable:
+    """Native result values with separate legacy pandas-index metadata."""
+
+    def __init__(self, data, index=None):
+        self.data = data
+        self.index = index
+
+    def _dalex_pandas_view(self):
+        from ._dataframe import to_pandas
+        result = to_pandas(self.data)
+        if self.index is not None:
+            result.index = self.index
+        return result
+
+    def _dalex_native_view(self, backend, *, partition=None, pandas_view=None):
+        if partition is not None:
+            raise ValueError('This result table has no partitions')
+        if backend == 'pandas':
+            return pandas_view.copy() if pandas_view is not None else self._dalex_pandas_view()
+        original = nw.from_native(self.data, eager_only=True)
+        namespace = nw.get_native_namespace(original)
+        source = nw.from_native(pandas_view, eager_only=True) if pandas_view is not None else original
+        if backend == 'native':
+            backend = namespace.__name__
+        return export_result_frame(source.to_native(), backend)

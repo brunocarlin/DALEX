@@ -6,7 +6,8 @@ from copy import deepcopy
 
 from . import checks, plot, utils
 from ... import _theme, _global_checks, _global_utils
-from ..._explanation import Explanation
+from ..._explanation import Explanation, CompatibilityTable, EmptyTable
+import narwhals.stable.v2 as nw
 
 
 class CeterisParibus(Explanation):
@@ -75,12 +76,33 @@ class CeterisParibus(Explanation):
         self.variable_splits = variable_splits
         self.variable_splits_type = _variable_splits_type
         self.variable_splits_with_obs = variable_splits_with_obs
-        self.result = pd.DataFrame()
+        self.result = EmptyTable()
         self.new_observation = None
         self.processes = _processes
 
     def _repr_html_(self):
         return self.result._repr_html_()
+
+    new_observation = CompatibilityTable()
+
+    def _native_profile_frames(self):
+        """Use native partitions until a caller edits the legacy pandas view."""
+        from ._table import ProfileTables
+        stored = self.__dict__.get('result')
+        cached = self.__dict__.get('_compatibility_result')
+        if isinstance(stored, ProfileTables) and cached is None:
+            return list(zip(stored.variables, stored.frames))
+        frame = nw.from_native(cached if cached is not None else self.result, eager_only=True)
+        variables = frame['_vname_'].unique(maintain_order=True).to_list()
+        return [(variable, frame.filter(nw.col('_vname_') == nw.lit(variable)).to_native()) for variable in variables]
+
+    def _native_observation_frame(self):
+        from ._table import ObservationTable
+        stored = self.__dict__.get('new_observation')
+        cached = self.__dict__.get('_compatibility_new_observation')
+        if isinstance(stored, ObservationTable) and cached is None:
+            return stored.data
+        return cached if cached is not None else self.new_observation
 
     def fit(self,
             explainer,
@@ -111,7 +133,7 @@ class CeterisParibus(Explanation):
 
         checks.check_data(explainer.data, self.variables)
 
-        self.new_observation = checks.check_new_observation(new_observation, explainer)
+        observation = checks.check_new_observation(new_observation, explainer)
         self._native_features = not isinstance(explainer.data, pd.DataFrame)
 
         self.variable_splits = checks.check_variable_splits(self.variable_splits,
@@ -120,15 +142,16 @@ class CeterisParibus(Explanation):
                                                      explainer.data,
                                                      self.variable_splits_type,
                                                      self.variable_splits_with_obs,
-                                                     self.new_observation)
+                                                     observation)
 
         y = checks.check_y(y)
 
-        self._native_missing_states = utils.native_numeric_missing_states(self.new_observation, self.variable_splits)
+        self._native_missing_states = utils.native_numeric_missing_states(observation, self.variable_splits)
 
-        self.result, self.new_observation = utils.calculate_ceteris_paribus(
+        from ._native import calculate
+        self.result, self.new_observation = calculate(
             explainer,
-            self.new_observation,
+            observation,
             self.variable_splits,
             y,
             self.processes,

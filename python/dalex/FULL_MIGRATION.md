@@ -18,6 +18,14 @@ implementation commits automatically. PR #587 remains draft for manual review.
   backend. `result_as('pandas'|'polars'|'pyarrow')` requests an explicit backend.
   `table='permutation'` exports raw importance draws. SHAP's non-tabular arrays
   retain their existing representation and support only the native export.
+- CP's native `result_as(partition=variable)` retains each original feature's
+  scalar type. Whole-table native exports reject partitions with incompatible
+  scalar types or unsafe integer promotion instead of silently stringifying or
+  rounding. The combined, writable legacy pandas table remains available.
+- Native grouped-profile tables retain typed grouping columns; the legacy
+  pandas projection encodes those memberships into its existing string labels.
+  Once a pandas projection is materialized it is authoritative, including its
+  column layout, for subsequent exports.
 - Arbitrary Python/non-string labels that cannot be physical native column names
   remain at an explicit pandas compatibility boundary, rather than being changed
   to strings silently. Default installation behavior remains compatible; moving
@@ -50,8 +58,13 @@ The following are gates, not claims that all have been completed:
   exports, in-place pandas edits, independent exports and old pickle state.
 - Permutation repetitions and their means run through Narwhals, returning native
   result/raw tables until their legacy public attributes are requested.
-- Profile-reduction kernels have analytical cross-backend tests, including
-  missing groups and old-Narwhals behavior; full workflow wiring is pending.
+- CP prediction/profile-grid construction and partial, conditional and
+  accumulated-profile computation run through typed native partitions. Group
+  display labels and legacy row indexes are formatted at the pandas boundary.
+- Analytical kernel tests and real sklearn/LightGBM pipeline integrations cover
+  native model-to-CP-to-aggregate flows, missing groups, native exports, legacy
+  result mutation, pickle, plots and nanosecond categorical levels. Guards reject
+  pandas DataFrame/Series construction during native computation.
 - Other remaining areas above are still being implemented and audited.
 
 ## External migration precedents

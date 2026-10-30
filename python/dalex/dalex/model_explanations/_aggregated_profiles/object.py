@@ -5,7 +5,7 @@ from copy import deepcopy
 
 from . import checks, utils
 from ... import _theme, _global_checks, _global_utils
-from ..._explanation import Explanation
+from ..._explanation import Explanation, EmptyTable
 
 
 class AggregatedProfiles(Explanation):
@@ -89,7 +89,7 @@ class AggregatedProfiles(Explanation):
         self.variables = _variables
         self.span = span
         self.center = center
-        self.result = pd.DataFrame()
+        self.result = EmptyTable()
         self.mean_prediction = None
         self.raw_profiles = None
         self.random_state = random_state
@@ -118,38 +118,19 @@ class AggregatedProfiles(Explanation):
         # are there any other cp?
         from dalex.predict_explanations import CeterisParibus
         if isinstance(ceteris_paribus, CeterisParibus):  # allow for ceteris_paribus to be a single element
-            all_profiles = ceteris_paribus.result.copy()
-            all_observations = ceteris_paribus.new_observation.copy()
             self.raw_profiles = deepcopy(ceteris_paribus)
+            profiles = [ceteris_paribus]
         elif isinstance(ceteris_paribus, (list, tuple)):  # ceteris_paribus as tuple or array
-            all_profiles = None
-            all_observations = None
             for cp in ceteris_paribus:
                 _global_checks.global_check_object_class(cp, CeterisParibus)
-                all_profiles = pd.concat([all_profiles, cp.result.copy()])
-                all_observations = pd.concat([all_observations, cp.new_observation.copy()])
+            profiles = list(ceteris_paribus)
         else:
             _global_checks.global_raise_objects_class(ceteris_paribus, CeterisParibus)
 
-        all_profiles, vnames = utils.prepare_numerical_categorical(all_profiles, self.variables, self.variable_type)
-
-        # select only suitable variables
-        all_profiles = all_profiles.loc[all_profiles['_vname_'].isin(vnames), :]
-
-        profiles = ceteris_paribus if isinstance(ceteris_paribus, (list, tuple)) else [ceteris_paribus]
-        utils.check_native_missing_interventions(profiles, vnames, self.type)
-
-        all_profiles = utils.prepare_x(all_profiles, self.variable_type)
-
-        self.mean_prediction = all_observations['_yhat_'].mean()
-
-        self.result = utils.aggregate_profiles(all_profiles,
-                                               self.mean_prediction,
-                                               self.type,
-                                               self.groups,
-                                               self.center,
-                                               self.span,
-                                               verbose)
+        from ._native import aggregate_ceteris
+        self.result, self.mean_prediction = aggregate_ceteris(
+            profiles, self.variables, self.variable_type, self.type,
+            self.groups, self.span, self.center)
 
     def plot(self,
              objects=None,

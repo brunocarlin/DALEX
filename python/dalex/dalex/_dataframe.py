@@ -185,8 +185,24 @@ def column_values(data, name, *, preserve_nulls=False):
         if preserve_nulls and isinstance(data[name].dtype, pd.api.extensions.ExtensionDtype):
             return data[name].to_numpy(dtype=object, na_value=None)
         return data[name].to_numpy()
+    temporal = as_eager_dataframe(data).get_column(name)
+    if isinstance(temporal.dtype, (nw.Datetime, nw.Duration)):
+        # Older Polars builds can crash exporting timezone/nanosecond Series to
+        # NumPy directly. Integer epoch buffers also avoid Python datetime's
+        # microsecond limit and float promotion of nullable nanosecond counts.
+        counts = temporal.cast(nw.Int64).to_list()
+        absent = temporal.is_null().to_list()
+        integers = np.array([np.iinfo(np.int64).min if missing else int(value)
+                             for value, missing in zip(counts, absent)], dtype=np.int64)
+        kind = 'datetime64' if isinstance(temporal.dtype, nw.Datetime) else 'timedelta64'
+        values = integers.view(f'{kind}[{temporal.dtype.time_unit}]')
+        if preserve_nulls and any(absent):
+            result = np.empty(len(values), dtype=object)
+            result[:] = [None if missing else value for value, missing in zip(values, absent)]
+            return result
+        return values
     if preserve_nulls:
-        column = as_eager_dataframe(data).get_column(name)
+        column = temporal
         if column.dtype.is_numeric() and column.null_count():
             # Float NumPy exports collapse null into NaN and can round nullable
             # integers. Masked feature edits must retain the untouched values.
@@ -197,7 +213,7 @@ def column_values(data, name, *, preserve_nulls=False):
         column = data.column(name)
         if hasattr(column.type, "index_type"):
             return column.cast(column.type.value_type).to_numpy()
-    return as_eager_dataframe(data).get_column(name).to_numpy()
+    return temporal.to_numpy()
 
 
 def observation_values(data, metadata):

@@ -4,6 +4,10 @@
 
 * retain native importance result/permutation tables until legacy pandas access;
   add independent result_as exports and retain writable pandas result semantics
+* compute CP and aggregated profiles through typed native tables, including
+  Gaussian weighting and accumulated effects; publish legacy pandas views lazily
+* preserve nanosecond profile grids on older supported Polars and test real
+  sklearn/LightGBM preprocessing integrations through exports, plots and pickle
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON

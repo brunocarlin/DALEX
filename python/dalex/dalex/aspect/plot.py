@@ -1,6 +1,7 @@
 import numpy as np
 from plotly.figure_factory import create_dendrogram
 import plotly.graph_objects as go
+from .._global_utils import finite_range_length
 
 
 def copy_dendrogram(fig):
@@ -133,11 +134,12 @@ def _add_between_points(
 def _add_points_on_dendrogram_traces(fig):
     # add points to all traces in dendrogram 
     k = len(fig.data)
-    # get global range of axis
-    range_x = fig.full_figure_for_development(warn=False).layout.xaxis.range
-    range_x_len = range_x[1] - range_x[0]
-    range_y = fig.full_figure_for_development(warn=False).layout.yaxis.range
-    range_y_len = range_y[1] - range_y[0]
+    # Hover interpolation needs coordinate spans, not a browser-rendered
+    # figure. This also handles constant panels without a zero denominator.
+    range_x_len = finite_range_length(fig.layout.xaxis.range or [
+        value for trace in fig.data if trace.x is not None for value in trace.x])
+    range_y_len = finite_range_length(fig.layout.yaxis.range or [
+        value for trace in fig.data if trace.y is not None for value in trace.y])
     for i in range(k):
         arr_text = fig.data[i]["text"]
         inserted_points = 0

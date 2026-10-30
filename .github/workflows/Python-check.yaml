@@ -17,6 +17,44 @@ defaults:
     shell: bash
 
 jobs:
+  upstream-compatibility:
+    name: Upstream pandas numerical and pickle compatibility / Python 3.14
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ModelOriented/DALEX
+          ref: 77ea3ad9580a3b68aaa94d8dca75d11bd527848f
+          path: legacy-reference
+          sparse-checkout: python/dalex
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Install compatible reference and migrated-package dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --only-binary=numpy,pandas,scipy,pyarrow,scikit-learn,statsmodels,polars,polars-runtime-32,matplotlib,scikit-image,shap 'pandas>=2.3,<3' -e ./python/dalex -r python/dalex/ci/requirements.txt
+          python -m pip freeze > compatibility-versions.txt
+      - name: Compare numerical outputs with unmodified upstream
+        run: python python/dalex/ci/compare_legacy.py --reference-root legacy-reference/python/dalex --output upstream-parity.json
+      - name: Load actual upstream explanation pickles and reuse legacy CP/Aspect objects
+        run: python python/dalex/ci/check_legacy_pickles.py --reference-root legacy-reference/python/dalex --output upstream-pickle-compatibility.json
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-compatibility
+          path: |
+            upstream-parity.json
+            upstream-pickle-compatibility.json
+            compatibility-versions.txt
+
   test:
     name: Python ${{ matrix.python }} / ${{ matrix.os }} / pandas ${{ matrix.pandas || '<3' }}
     runs-on: ${{ matrix.os }}

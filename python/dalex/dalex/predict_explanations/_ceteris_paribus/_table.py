@@ -42,6 +42,10 @@ class ProfileTables:
         self.indexes = list(indexes)
         self.variables = list(variables)
 
+    def _dalex_set_column(self, name, value):
+        self.frames = [nw.from_native(frame, eager_only=True).with_columns(nw.lit(value).alias(name)).to_native()
+                       for frame in self.frames]
+
     def _dalex_pandas_view(self):
         import pandas as pd
         from ..._dataframe import to_pandas

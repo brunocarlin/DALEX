@@ -12,6 +12,24 @@ from dalex.aspect import utils
 from test_native_profile_workflows import native_computation_only
 
 
+@pytest.mark.parametrize('constant', [False, True])
+def test_dendrogram_hover_interpolation_preserves_vertices_without_renderer(constant, monkeypatch):
+    import plotly.graph_objects as go
+    from dalex.aspect.plot import _add_points_on_dendrogram_traces
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Hover geometry invoked a browser renderer')
+    monkeypatch.setattr(go.Figure, 'full_figure_for_development', forbidden)
+    x = [1.] * 5 if constant else [0., 1., 1., 1., 0.]
+    y = [0.] * 5 if constant else [0., 0., .5, 1., 1.]
+    original = list(zip(x, y))
+    fig = go.Figure(go.Scatter(x=x, y=y, text=[None, None, 'middle', None, None]))
+    result = _add_points_on_dendrogram_traces(fig)
+    actual = list(zip(result.data[0].x, result.data[0].y))
+    assert all(vertex in actual for vertex in original)
+    assert actual[0] == original[0] and actual[-1] == original[-1]
+    assert sum(text == 'middle' for text in result.data[0].text) == 1
+
+
 def reference(data, method):
     numeric = list(data.corr(method, numeric_only=True).columns)
     names = numeric + list(set(data.columns) - set(numeric))
@@ -57,6 +75,10 @@ def test_native_aspect_statistics_and_lifecycle(backend, method, monkeypatch):
         assert '_compatibility_depend_matrix' not in aspect.__dict__
         assert '_compatibility__dendrogram_aspects_ordered' not in aspect.__dict__
     pd.testing.assert_frame_equal(aspect.depend_matrix, expected, check_exact=False, atol=1e-12, rtol=1e-12)
+    import plotly.graph_objects as go
+    def forbidden_renderer(*args, **kwargs):
+        raise AssertionError('Aspect dendrogram must not require an external renderer')
+    monkeypatch.setattr(go.Figure, 'full_figure_for_development', forbidden_renderer)
     assert aspect.plot_dendrogram(show=False) is not None
     restored = pickle.loads(pickle.dumps(aspect))
     pd.testing.assert_frame_equal(restored.depend_matrix, expected, check_exact=False, atol=1e-12, rtol=1e-12)

@@ -29,6 +29,7 @@ PPS runs separately with its upstream-compatible pandas<2 dependencies.
 | `test_native_arena_workflows.py` | Model registration, all plot families, background threads/resources, incremental Shapley reductions, serialization and writable public resource dictionaries |
 | `test_arena_missing_json.py` | HTTP custom observations and strict JSON with missing/nonfinite display values |
 | `test_native_surrogate_workflows.py` | Real models through LIME and sklearn tree/linear surrogates, prediction adapters, exports, pickle and matplotlib plots |
+| `test_native_label_workflows.py` | Custom labels across nine explanation methods, lazy native storage, original pandas index/column layouts and pickle |
 | `test_native_estimators.py`, `test_native_tree_wrappers.py` | Polars-trained real estimators and external SHAP tree boundaries |
 | `test_native_categorical_estimators.py`, `test_missing_native_estimators.py` | Explicit model-owned categorical/missing preprocessing and unsupported-input policies |
 | `test_nullable_shap_boundaries.py`, `test_external_shap_seed.py` | Nullable numeric matrix adapters and sampled Kernel SHAP random-state behavior |
@@ -44,8 +45,14 @@ Independent expected-value tests cover typed UInt64 grids above 2**63, exact
 nanosecond values, native null versus NaN, missing/unused groups, mutation and
 metadata. `test_native_profile_grid_scaling.py` also guards against exporting
 every reference cell to Python merely to construct an automatic numeric grid.
+Aspect/dendrogram tests reject browser-renderer calls and preserve the original
+hover vertices and endpoints, including constant panels.
 `ci/compare_legacy.py` compares numerical outputs with an unmodified
 upstream checkout, using a documented NumPy spelling shim for the old reference.
+`ci/check_legacy_pickles.py` loads real upstream explanation pickles in the new
+package, checks their pandas tables, restores the documented Explainer dump
+protocol and reuses old CP/Aspect objects. A required Python 3.14 CI job checks
+both scripts against a pinned upstream revision.
 
 ## Runtime matrix and external libraries
 

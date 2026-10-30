@@ -105,6 +105,22 @@ class Explanation(ResultTables, ABC):
         pass
 
 
+def set_result_column(explanation, name, value):
+    """Apply a legacy result override without publishing a pandas view."""
+    original = explanation.__dict__.get('result')
+    if '_compatibility_result' in explanation.__dict__ or is_pandas_dataframe(original):
+        explanation.result[name] = value
+    elif callable(getattr(type(original), '_dalex_set_column', None)):
+        original._dalex_set_column(name, value)
+    else:
+        try:
+            frame = nw.from_native(original, eager_only=True)
+        except TypeError:
+            explanation.result[name] = value  # Retain non-tabular legacy behavior.
+        else:
+            explanation.result = frame.with_columns(nw.lit(value).alias(name)).to_native()
+
+
 class EmptyTable:
     """Unfitted explanations retain a lazily created empty pandas result."""
 
@@ -130,6 +146,16 @@ class IndexedTable:
         self.data = data
         self.index = index
         self.index_column = index_column
+
+    def _dalex_set_column(self, name, value):
+        frame = nw.from_native(self.data, eager_only=True)
+        if getattr(self, 'index_column', None) == name:
+            # Historical label overrides add a column while keeping the
+            # original performance-table index, rather than renaming it.
+            if self.index is None:
+                self.index = frame[name].to_numpy().copy()
+            self.index_column = None
+        self.data = frame.with_columns(nw.lit(value).alias(name)).to_native()
 
     def _dalex_pandas_view(self):
         from ._dataframe import to_pandas

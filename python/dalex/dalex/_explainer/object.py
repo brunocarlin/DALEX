@@ -12,6 +12,7 @@ from . import utils
 from . import helper
 from .. import _global_checks
 from .._dataframe import take_rows, as_numpy_vector
+from .._explanation import set_result_column
 
 
 class Explainer:
@@ -332,7 +333,7 @@ class Explainer:
         _predict_parts.fit(self, new_observation, **kwargs)
         
         if label:
-            _predict_parts.result['label'] = label
+            set_result_column(_predict_parts, 'label', label)
 
         return _predict_parts
 
@@ -413,7 +414,7 @@ class Explainer:
         _predict_profile.fit(self, new_observation, y, verbose)
 
         if label:
-            _predict_profile.result['_label_'] = label
+            set_result_column(_predict_profile, '_label_', label)
             
         return _predict_profile
 
@@ -505,7 +506,7 @@ class Explainer:
         _model_performance.fit(self)
         
         if label:
-            _model_performance.result['label'] = label
+            set_result_column(_model_performance, 'label', label)
 
         return _model_performance
 
@@ -599,7 +600,7 @@ class Explainer:
             _model_parts.fit(self)
             
             if label:
-                _model_parts.result['label'] = label
+                set_result_column(_model_parts, 'label', label)
                  
         elif _type == 'shap_wrapper':
             _global_checks.global_check_import('shap', 'SHAP explanations')
@@ -735,7 +736,7 @@ class Explainer:
         _model_profile.fit(_ceteris_paribus, verbose)
 
         if label:
-            _model_profile.result['_label_'] = label
+            set_result_column(_model_profile, '_label_', label)
                 
         return _model_profile
 
@@ -771,7 +772,7 @@ class Explainer:
         _residual_diagnostics.fit(self)
 
         if label:
-            _residual_diagnostics.result['label'] = label
+            set_result_column(_residual_diagnostics, 'label', label)
             
         return _residual_diagnostics
 

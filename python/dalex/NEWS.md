@@ -28,6 +28,10 @@
   classes, native prediction adapters and pickle-safe plotting callables
 * build automatic numeric profile grids with native missing-value filtering and
   range reductions, avoiding Python scalar scans of full reference datasets
+* apply custom explanation labels without publishing pandas tables and preserve
+  the historical performance index when an override adds a label column
+* compute base Aspect dendrogram hover geometry without browser rendering,
+  including constant coordinate spans
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON

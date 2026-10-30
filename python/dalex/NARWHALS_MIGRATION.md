@@ -1,10 +1,13 @@
-# Native dataframe migration (incremental)
+# Narwhals dataframe migration
 
 The Python package now accepts eager pandas, Polars and Arrow frames. `Explainer.data`
 and feature batches passed to the predictor retain their native backend. NumPy
 inputs still become pandas, and the existing H2O conversion remains in place.
-This is an incremental contribution for ModelOriented/DALEX#575, not a claim that
-all DALEX integrations support Polars.
+This contribution addresses ModelOriented/DALEX#575. Its scope is native
+computation and compatible public APIs, rather than removing the pandas package.
+Pandas remains required for historical default outputs and plotting preparation.
+See [the implementation contract](FULL_MIGRATION.md) and source-stamped reports
+before treating any particular revision as validated.
 
 ## Supported and pending paths
 
@@ -17,10 +20,21 @@ all DALEX integrations support Polars.
 | breakdown / breakdown interactions | yes | observation metadata and contributions |
 | DALEX Shapley values (`type='shap'`) | yes | observation metadata and contributions |
 | ceteris paribus | yes | profile table after prediction |
-| partial, accumulated, conditional profiles | yes | aggregation of profile result tables |
+| partial, accumulated, conditional profiles | yes | lazy legacy view; native typed aggregation |
 | SHAP kernel/tree/linear/deep/gradient wrappers, LIME, model surrogates | yes | explicit NumPy/tensor boundaries of third-party libraries |
-| Aspect importance/triplots | yes | correlation/contingency statistics and result tables |
-| Arena | yes | labels, attributes, EDA and serialized plot tables |
+| Aspect importance/triplots | yes | lazy legacy matrices/tables; optional external PPS |
+| Arena | yes | lazy public resource views and chart serialization |
+| bundled dataset loaders | yes | default pandas loader remains compatible |
+
+Importance, contributions, CP/aggregated profiles, metrics/diagnostics, Aspect,
+fairness and Arena retain native result tables until public pandas access.
+Numerical vector operations use NumPy/SciPy. Plot construction intentionally
+consumes legacy views. `result_as()` exports independent native tables without
+publishing those views; `result_as('pandas'|'polars'|'pyarrow')` chooses a backend.
+Reading a legacy table makes its subsequent edits and layout authoritative.
+For CP, aggregate and Shapley results use `partition=feature` when incompatible
+scalar types or unsafe integer promotions cannot share one native value column.
+Dataset loaders accept `backend='polars'|'pyarrow'` and `include_index=True`.
 
 Classification and regression fairness have cross-backend integration coverage. The optional PPS dependence method is tested separately with Python 3.10/pandas 1.5/ppscore 1.3.
 Its upstream pandas<2 bound and pkg_resources requirement prevent support in the primary 3.14 environment.
@@ -63,12 +77,14 @@ exact UInt64 cells when the caller supplies an object/integer matrix.
 Ceteris-paribus predictions retain explicit `None` and `np.nan` as distinct native
 numeric interventions. An entirely missing native feature gets its observed null
 and/or NaN states rather than an invented finite grid. The existing pandas numeric
-aggregate result format has one missing key: combining null and NaN interventions,
-or conditioning a missing bin on original data containing both states, raises a
-clear error instead of silently averaging different states. Use `predict_profile`
-for separate interventions, one missing intervention per partial-profile call,
-or normalize missing values explicitly as part of the model's training contract.
-This validation also covers CP objects combined under the same model label.
+aggregate implementation retains separate null and NaN bins. Native numeric
+results expose `_x_kind_` where necessary; categorical labels distinguish the
+two states and avoid collisions with literal levels. If the original feature and
+grid each contain only one missing state, null/NaN spellings match for existing
+pandas-origin grids. Exact integer grid keys and Gaussian distances retain
+UInt64 precision above 2**63. Numeric accumulated effects require finite splits:
+missing values have no numeric ordering. Mixed integer/float native aggregate
+exports require partitions when combination would round an integer.
 
 NumPy/tensor boundaries in external explainers can still coalesce numeric nulls
 and NaNs or round large integers when the external library requires floating
@@ -84,11 +100,12 @@ inputs. Browser display numeric precision remains separate from native feature
 precision, particularly for integers above JavaScript's exact-integer range.
 
 Arena retains a buffer-sharing native snapshot of pushed observations alongside
-its pandas display table. Same-backend model requests select directly from that
+its lazy pandas display view. Same-backend model requests select directly from that
 snapshot; cross-backend requests reconstruct per-column object cells, preserving
 nullable UInt64 values and native floating validity. Model registration compares
 features with the target one column at a time rather than exporting the entire
-mixed/structured feature matrix. Display and EDA tables remain pandas boundaries.
+mixed/structured feature matrix. EDA reductions and attributes run natively;
+pandas display access remains a compatibility boundary.
 Custom HTTP observations reconstruct one native row directly from the submitted
 cells; they do not materialize the model's entire feature dataset for its schema.
 
@@ -123,12 +140,12 @@ The regular matrix retains pandas 2, with an additional Python 3.14/pandas 3 job
 Scientific extensions require wheels in CI so unavailable free-threaded wheels
 produce a clear dependency-install failure instead of an unbounded source build. Maintainers should explicitly
 approve the minimum-version change before release. Pandas remains required at
-`>=1.5.3,<4` for result/statistics tables. Pandas 3 compatibility fixes include
+`>=1.5.3,<4` for compatible public tables and plotting. Pandas 3 compatibility fixes include
 copy-on-write array mutation, fairness table reshaping/string group detection and
 breakdown plot string labels. Minimum-pandas CI retains 1.5.3 coverage.
 The `<4` cap is a precautionary major-version policy, not evidence that pandas 4
 breaks DALEX. No pandas 4 release/prerelease/nightly was available when checked
-on 2026-10-28. A separate forward-compatibility run tests the available pandas
+on 2026-10-30. A separate forward-compatibility run tests the available pandas
 3.2 development wheel; that does not certify pandas 4 support.
 
 No new mandatory Polars dependency is imposed on pandas-only users. Install `dalex[polars]`
@@ -227,13 +244,17 @@ Earlier snapshots: [benchmarks/results/PHASE2_VALIDATION.md](benchmarks/results/
 LIME and kernel SHAP require NumPy matrices. Their callbacks now explicitly restore
 that matrix to the explainer's native backend before invoking the original model.
 Model-specific SHAP explainers consume their estimator directly. Surrogate models
-train on the selected native feature frame. No lazy frame is collected.
+train at an explicit numeric NumPy boundary. Native LIME and model-surrogate
+returns retain lazy pandas result/performance tables and support `result_as()`;
+native sklearn surrogates subclass the corresponding estimator. Pandas inputs
+retain the exact original external classes and historical attributes. Plot
+callables survive pickle. No lazy frame is collected.
 
-Aspect keeps feature sampling and masked replacement native; its statistical
-correlation/contingency matrices remain pandas-backed to preserve their numerical
-semantics. Custom dependence callables receive the native input. Arena retains the
-native Explainer, with a pandas copy for observation labels/EDA metadata only;
-observation and background SHAP callbacks restore or retain native feature batches.
+Aspect keeps feature sampling, masked replacement and association tables native;
+numerical correlation/contingency statistics use NumPy/SciPy. The optional PPS
+library requires its explicit pandas boundary. Custom dependence callables receive
+native input. Arena retains native observation snapshots, EDA and background
+Shapley records/reductions, with lazy public pandas resource views.
 The HTTP custom-observation route and all 13 plot container families have integration
 coverage, including numeric/categorical fairness and native SHAP resources.
 
@@ -277,7 +298,7 @@ This is required for missing categorical profile values and Kernel SHAP parity.
 
 Numeric profile grids ignore missing values consistently across backends. This
 also fixes legacy pandas quantile grids that previously became all-NaN. An
-all-missing numeric column has one NaN split; explicit observation values are
+all-missing numeric column retains its observed missing states; explicit observation values are
 still added when requested. Boolean variables use their observed levels.
 
 Categorical estimator semantics belong to the model: sklearn's OrdinalEncoder
@@ -329,9 +350,17 @@ normalize native target vectors at the statistical NumPy boundary. Regression
 fairness uses those normalized memberships consistently. Membership strings,
 including any missing-group policy, remain the caller's responsibility.
 
-Partial numeric profiles retain an explicitly missing intervention, including
+Partial numeric profiles retain explicitly missing interventions, including
 the automatic grid for an entirely missing numeric feature. Conditional profiles
 treat that intervention as a separate missing-value bin: only observations with
-a missing original value receive weight in that bin. A numeric accumulated-effect
+a matching missing original value receive weight in that bin. A numeric accumulated-effect
 grid containing a missing value raises a clear error because the value has no
 numeric ordering; use finite splits or a partial/conditional profile instead.
+
+Private compatibility/reference utilities still contain pandas implementations;
+native explanation fit paths do not call those algorithms. Pandas-only helper
+branches also retain index, extension-dtype and historical-label semantics. A
+literal absence of pandas imports is not the completion criterion for this
+backwards-compatible migration. Lazy frames, other eager dataframe engines,
+arbitrary neural architectures/GPU execution and pandas-free installation are
+outside the currently certified scope.

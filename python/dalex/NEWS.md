@@ -22,6 +22,10 @@
   on native tables; retain lazy pandas resource dictionaries and typed exports
 * add native bundled dataset loaders with explicit optional row identifiers
 * retain nanosecond resource snapshots and independent nested SHAP array exports
+* preserve exact large-integer profile grids and conditional distances, separate
+  native null/NaN bins and groups, and provide typed aggregate partition exports
+* retain lazy native LIME/surrogate result tables with compatible pandas return
+  classes, native prediction adapters and pickle-safe plotting callables
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON
@@ -38,8 +42,8 @@
 * retain native Arena observation snapshots and exact cross-backend cells;
   inspect feature/target matches without exporting a full mixed feature matrix
 * preserve native numeric null/NaN distinctions and exact nullable integers in
-  breakdown, Shapley, Aspect and explicit ceteris-paribus interventions; reject
-  ambiguous numeric aggregate missing bins instead of silently merging states
+  breakdown, Shapley, Aspect and explicit ceteris-paribus interventions; retain
+  distinct numeric aggregate missing bins instead of silently merging states
 * preserve missing numeric interventions in partial/conditional profiles and
   reject unordered missing numeric grids for accumulated effects explicitly
 * accept native fairness membership/mitigation vectors and restore legacy Arena

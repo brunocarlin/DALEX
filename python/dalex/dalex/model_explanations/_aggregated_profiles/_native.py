@@ -16,6 +16,46 @@ def _non_nan(expression):
     return nw.when(expression.is_nan()).then(None).otherwise(expression)
 
 
+def _missing_kind(frame, name):
+    column = nw.col(name)
+    kind = nw.when(column.is_null()).then(nw.lit('null')).otherwise(nw.lit('value'))
+    if frame.schema[name].is_float():
+        nan = nw.when(column.is_nan()).then(nw.lit('nan')).otherwise(kind)
+        # Native float buffers distinguish null from NaN. Ordinary pandas
+        # float storage has one missing state and historically uses NaN.
+        kind = nan if nw.get_native_namespace(frame).__name__ == 'pandas' else nw.when(column.is_null()).then(nw.lit('null')).otherwise(nan)
+    return kind
+
+
+def _large_integer(frame, name):
+    series = frame[name]
+    return series.dtype.is_integer() and any(value is not None and abs(value) > 2**53
+                                             for value in (series.min(), series.max()))
+
+
+def _integer_weights(frame, span):
+    """Subtract integer grid keys exactly before entering floating statistics."""
+    from decimal import Decimal
+    grid, original = frame['_x_'].to_list(), frame['_original_'].to_list()
+    valid = [value for value in grid if not _missing(value)]
+    width = (max(valid) - min(valid)) if valid else 1.
+    if not width:
+        width = 1.
+    distances = []
+    for value, split in zip(original, grid):
+        if _missing(value) or _missing(split):
+            distances.append(np.nan)
+        elif isinstance(value, (int, np.integer)) and isinstance(split, (float, np.floating)):
+            distances.append(float(Decimal(int(value)) - Decimal.from_float(float(split))))
+        elif isinstance(split, (int, np.integer)) and isinstance(value, (float, np.floating)):
+            distances.append(float(Decimal.from_float(float(value)) - Decimal(int(split))))
+        else:
+            distances.append(float(value - split))
+    distances = np.asarray(distances)
+    values = np.exp(-1 * ((distances / float(width)) / span)**2 / 2) / np.sqrt(2*np.pi) / span
+    return nw.new_series('__weight__', values, backend=nw.get_native_namespace(frame))
+
+
 def _ordered_aggregate(frame, keys, expressions):
     # Native group-by ordering is not a portable contract. Record first-observed
     # order explicitly, as pandas groupby(sort=False) does for result rows.
@@ -39,17 +79,19 @@ def _window(frame, keys, operation):
     # the legacy dropna=False cumulative-sum contract for those memberships.
     columns = frame.select(keys).to_dict(as_series=False)
     missing = object()
+    nan_key = missing if namespace == 'pandas' else object()
     positions = {}
     for i, cells in enumerate(zip(*(columns[key] for key in keys))):
-        key = tuple(missing if value is None or isinstance(value, float) and np.isnan(value)
-                    else value for value in cells)
+        pandas = get_pandas()
+        key = tuple(missing if value is None or pandas is not None and (value is pandas.NA or value is pandas.NaT)
+                    else nan_key if isinstance(value, (float, np.floating)) and np.isnan(value) else value for value in cells)
         positions.setdefault(key, []).append(i)
     values = frame.get_column('_yhat_').to_numpy()
     output = np.empty_like(values)
     for key, rows in positions.items():
         chunk = values[rows]
         if operation == 'diff':
-            output[rows] = 0. if missing in key else np.r_[0., np.diff(chunk)]
+            output[rows] = 0. if missing in key or nan_key in key else np.r_[0., np.diff(chunk)]
         else:
             absent = np.isnan(chunk)
             accumulated = np.cumsum(np.where(absent, 0., chunk))
@@ -63,7 +105,7 @@ def reduce_profiles(data, kind, groups=(), *, span=.25):
 
     Returns a native result with ``_x_``, group columns and ``_yhat_``. Missing
     predictions follow legacy skip-NaN reductions, while missing grid keys remain
-    keys. The caller rejects ambiguous legacy null/NaN bins before publication.
+    keys. Native float storage retains separate null and NaN memberships.
     """
     if kind not in ('partial', 'conditional', 'accumulated'):
         raise ValueError('Unknown profile type')
@@ -71,24 +113,40 @@ def reduce_profiles(data, kind, groups=(), *, span=.25):
     if not len(frame):
         raise ValueError('Cannot aggregate an empty profile partition')
     groups = list(groups)
-    keys = ['_x_', *groups]
-    numeric = frame.schema['_x_'].is_numeric()
+    keys = ['_x_', *(['_x_kind_'] if '_x_kind_' in frame.columns else []), *groups]
+    numeric = frame.schema['_x_'].is_numeric() or frame.schema['_x_'] == nw.Boolean
     if kind == 'partial':
         frame = frame.with_columns(_non_nan(nw.col('_yhat_')).cast(frame.schema['_yhat_']).alias('_yhat_'))
         return _ordered_aggregate(frame, keys, [nw.col('_yhat_').mean()]).to_native()
     if numeric:
-        grid = _non_nan(nw.col('_x_').cast(nw.Float64)).cast(nw.Float64)
-        if kind == 'accumulated' and frame.select((grid.is_null()).any()).item():
+        if kind == 'accumulated' and (frame['_x_'].null_count() or frame.schema['_x_'].is_float() and frame['_x_'].is_nan().any()):
             raise ValueError('Accumulated effects cannot order a missing value in a numeric grid')
-        width = frame.select(grid.max() - grid.min()).item()
-        if width == 0:
-            width = 1.
-        original = _non_nan(nw.col('_original_').cast(nw.Float64)).cast(nw.Float64)
-        # Retain the legacy norm() operation order; backend reductions may
-        # still differ by floating-point rounding, but avoid reassociation here.
-        weights = (-1 * (((original - grid) / width) / span) ** 2 / 2).exp() / np.sqrt(2 * np.pi) / span
-        if kind == 'conditional' and frame.select(grid.is_null().any()).item():
-            weights = nw.when(original.is_null() & grid.is_null()).then(1.).otherwise(weights.fill_null(0.))
+        large = _large_integer(frame, '_x_') or _large_integer(frame, '_original_')
+        if large:
+            frame = frame.with_columns(_integer_weights(frame, span))
+            weights = _non_nan(nw.col('__weight__')).cast(nw.Float64)
+        else:
+            grid = _non_nan(nw.col('_x_').cast(nw.Float64)).cast(nw.Float64)
+            width = frame.select(grid.max() - grid.min()).item()
+            if width == 0 or width is None:
+                width = 1.
+            original = _non_nan(nw.col('_original_').cast(nw.Float64)).cast(nw.Float64)
+            weights = (-1 * (((original - grid) / width) / span) ** 2 / 2).exp() / np.sqrt(2 * np.pi) / span
+        if kind == 'conditional' and '_x_kind_' in frame.columns:
+            original_missing = set(frame['_original_kind_'].to_list()) - {'value'}
+            grid_missing = set(frame['_x_kind_'].to_list()) - {'value'}
+            original_kind = nw.col('_original_kind_')
+            # A pandas-origin grid commonly spells a native null as np.nan.
+            # Preserve that existing workflow when there is only one missing
+            # state on each side, while keeping true null/NaN bins distinct.
+            if len(original_missing) == len(grid_missing) == 1:
+                original_kind = nw.when(original_kind != 'value').then(
+                    nw.lit(next(iter(grid_missing)))).otherwise(original_kind)
+            weights = nw.when(nw.col('_x_kind_') != 'value').then(
+                (nw.col('_x_kind_') == original_kind).cast(nw.Float64)).otherwise(weights.fill_null(0.))
+        elif not large:
+            if kind == 'conditional' and frame.select(grid.is_null().any()).item():
+                weights = nw.when(original.is_null() & grid.is_null()).then(1.).otherwise(weights.fill_null(0.))
     else:
         weights = nw.col('_original_') == nw.col('_x_')
     frame = frame.with_columns(weights.cast(nw.Float64).alias('__weight__'))
@@ -199,7 +257,15 @@ class AggregatedTable(IndexedTable):
 
     def _dalex_pandas_view(self):
         result = super()._dalex_pandas_view()
+        frame = nw.from_native(self.data, eager_only=True)
         for group in self.groups:
+            series = frame[group]
+            if (nw.get_native_namespace(frame).__name__ != 'pandas' and series.dtype.is_float()
+                    and series.null_count() and series.is_nan().any()):
+                values = np.empty(len(series), dtype=object)
+                values[:] = series.to_list()
+                result[group] = values
+                continue
             dtype = self.group_dtypes.get(group)
             if dtype == 'object':
                 result[group] = result[group].astype(object).where(result[group].notna(), np.nan)
@@ -226,11 +292,13 @@ def aggregate_ceteris(profiles, variables, variable_type, kind, groups, span, ce
     selected &= numerical if variable_type == 'numerical' else selected if variables is not None else set(all_variables) - numerical
     if not selected:
         raise ValueError('There are no numerical variables' if variable_type == 'numerical' else 'There are no non-numerical variables')
-    from .utils import check_native_missing_interventions
-    check_native_missing_interventions(profiles, list(selected), kind)
+    missing_variables = {variable for cp in profiles if getattr(cp, '_native_features', False)
+                         for variable, values in cp.variable_splits.items()
+                         if variable in selected and any(_missing(value) for value in values)}
     predictions = [nw.from_native(cp._native_observation_frame())['_yhat_'].to_numpy() for cp in profiles]
     mean_prediction = np.nanmean(np.concatenate(predictions))
-    target = nw.get_native_namespace(entries[0][1]).__name__
+    namespaces = [nw.get_native_namespace(frame).__name__ for _, frame in entries]
+    target = next((namespace for namespace in namespaces if namespace != 'pandas'), namespaces[0])
     groups = list(groups)
     group_dtypes = {}
     for _, frame in entries:
@@ -250,7 +318,7 @@ def aggregate_ceteris(profiles, variables, variable_type, kind, groups, span, ce
         frames = [frame for _, frame in entries]
         for variable in selected:
             integer_labels = _integer_display(frames, variable)
-            levels, missing_labels, nonmissing = {}, [], set()
+            levels, missing_labels, nonmissing, missing_kinds = {}, [], set(), set()
             for name, frame in entries:
                 if name != variable:
                     continue
@@ -261,22 +329,44 @@ def aggregate_ceteris(profiles, variables, variable_type, kind, groups, span, ce
                     else:
                         levels[value] = label
                         nonmissing.add(label)
+                for value in frame['_original_'].to_list():
+                    if _missing(value):
+                        missing_kinds.add('nan' if isinstance(value, (float, np.floating)) and np.isnan(value) else 'null')
             missing_label = missing_labels[0] if missing_labels else '<missing>'
             while missing_label in nonmissing:
                 missing_label += ' (missing)'
-            category_maps[variable] = (levels, missing_label, integer_labels)
+            distinct = {}
+            if variable in missing_variables and len(missing_kinds) > 1:
+                for missing_kind in missing_kinds:
+                    label = '<' + missing_kind + '>'
+                    while label in nonmissing:
+                        label += ' (missing)'
+                    distinct[missing_kind] = label
+            category_maps[variable] = (levels, missing_label, integer_labels, distinct)
     partitions = {}
     for variable, frame in entries:
         if variable not in selected:
             continue
         if variable_type == 'numerical':
-            frame = frame.with_columns(frame.get_column(variable).cast(nw.Float64).alias('_x_'))
+            dtype = frame.schema[variable]
+            if dtype.is_numeric() or dtype == nw.Boolean:
+                frame = frame.with_columns(frame.get_column(variable).alias('_x_'))
+            else:
+                from ..._dataframe import column_values
+                values = np.asarray(column_values(frame.to_native(), variable, preserve_nulls=True), dtype=float)
+                frame = frame.with_columns(nw.new_series('_x_', values, backend=nw.get_native_namespace(frame)))
+            if variable in missing_variables:
+                frame = frame.with_columns(_missing_kind(frame, '_x_').alias('_x_kind_'),
+                                           _missing_kind(frame, '_original_').alias('_original_kind_'))
         else:
-            levels, missing_label, integer_labels = category_maps[variable]
+            levels, missing_label, integer_labels, distinct = category_maps[variable]
             values, labels, _ = _keys_labels(frame, variable, integer_labels)
             originals, original_labels, _ = _keys_labels(frame, '_original_', False)
-            labels = [missing_label if _missing(value) else label for value, label in zip(values, labels)]
-            original_labels = [missing_label if _missing(value) else levels.get(value, label)
+            def missing_display(value):
+                key = 'nan' if isinstance(value, (float, np.floating)) and np.isnan(value) else 'null'
+                return distinct.get(key, missing_label)
+            labels = [missing_display(value) if _missing(value) else label for value, label in zip(values, labels)]
+            original_labels = [missing_display(value) if _missing(value) else levels.get(value, label)
                                for value, label in zip(originals, original_labels)]
             namespace = nw.get_native_namespace(frame)
             frame = frame.with_columns(nw.new_series('_x_', labels, backend=namespace),
@@ -285,9 +375,10 @@ def aggregate_ceteris(profiles, variables, variable_type, kind, groups, span, ce
             dtype = frame.schema[group]
             if isinstance(dtype, (nw.Categorical, nw.Enum)):
                 frame = frame.with_columns(nw.col(group).cast(nw.String))
-            elif isinstance(dtype, (nw.Float32, nw.Float64)):
+            elif isinstance(dtype, (nw.Float32, nw.Float64)) and nw.get_native_namespace(frame).__name__ == 'pandas':
                 frame = frame.with_columns(_non_nan(nw.col(group)).cast(dtype).alias(group))
         keep = list(dict.fromkeys(['_vname_', '_label_', '_x_', '_yhat_', '_ids_', '_original_', *groups]))
+        keep += [name for name in ('_x_kind_', '_original_kind_') if name in frame.columns]
         frame = frame.select(keep)
         for key, split in frame.group_by(['_vname_', '_label_'], drop_null_keys=True):
             key = tuple(value.as_py() if hasattr(value, 'as_py') else value for value in key)
@@ -301,11 +392,18 @@ def aggregate_ceteris(profiles, variables, variable_type, kind, groups, span, ce
         reduced = nw.from_native(reduce_profiles(joined, kind, groups, span=span))
         reduced = reduced.with_columns(nw.lit(variable).alias('_vname_'), nw.lit(label).alias('_label_'),
                                         nw.lit(0).cast(nw.Int64).alias('_ids_'))
-        results.append(reduced.select(['_vname_', '_label_', '_x_', *groups, '_yhat_', '_ids_']).to_native())
+        columns = ['_vname_', '_label_', '_x_', *groups, '_yhat_', '_ids_']
+        if missing_variables and variable_type == 'numerical':
+            if '_x_kind_' not in reduced.columns:
+                reduced = reduced.with_columns(nw.lit('value').alias('_x_kind_'))
+            columns.append('_x_kind_')
+        results.append(reduced.select(columns).to_native())
         indexes.extend(range(len(reduced)))
-    combined = nw.from_native(concat_compatible(results))
     if kind == 'accumulated' and center:
-        average = combined.select(_non_nan(nw.col('_yhat_')).mean()).item()
-        combined = combined.with_columns((nw.col('_yhat_') - average + mean_prediction).alias('_yhat_'))
+        predictions = np.concatenate([nw.from_native(data)['_yhat_'].to_numpy() for data in results])
+        average = np.nanmean(predictions)
+        results = [nw.from_native(data).with_columns((nw.col('_yhat_') - average + mean_prediction).alias('_yhat_')).to_native()
+                   for data in results]
     index = None if kind == 'partial' else np.asarray(indexes)
-    return AggregatedTable(combined.to_native(), index, groups, group_dtypes), mean_prediction
+    from ._table import AggregatedPartitions
+    return AggregatedPartitions(results, index, groups, group_dtypes, variable_type == 'numerical'), mean_prediction

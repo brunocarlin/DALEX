@@ -156,14 +156,23 @@ def test_all_missing_numeric_profile_grid_retains_native_validity(backend, kind)
 
 @pytest.mark.parametrize("backend", ["polars", "arrow"])
 @pytest.mark.parametrize("family", ["partial", "conditional"])
-def test_aggregated_profiles_reject_ambiguous_native_missing_states(backend, family):
+def test_aggregated_profiles_keep_distinct_native_missing_states(backend, family):
     data = pl.DataFrame({"x": [1., None, np.nan, 3.], "z": [2., 5., 1., 4.]})
     data = data if backend == "polars" else data.to_arrow()
     model = NullNanModel()
     exp = dx.Explainer(model, data, model.predict(data), model_type="regression", verbose=False)
-    splits = [None, np.nan] if family == "partial" else [None]
-    with pytest.raises(ValueError, match="distinct native null and NaN.*predict_profile"):
-        exp.model_profile(type=family, N=None, variable_splits={"x": splits}, verbose=False)
+    result = exp.model_profile(type=family, N=None, variable_splits={"x": [None, np.nan]}, verbose=False)
+    import narwhals.stable.v2 as nw
+    native = nw.from_native(result.result_as())
+    assert native['_x_kind_'].to_list() == ['null', 'nan']
+    assert native['_x_'].null_count() == 1
+    assert native['_x_'].is_nan().sum() == 1
+    np.testing.assert_allclose(native['_yhat_'].to_numpy(), [13., 25.] if family == 'partial' else [17., 21.])
+    assert result.result['_x_'].iloc[0] is None
+    assert np.isnan(result.result['_x_'].iloc[1])
+    exported = result.result_as('pyarrow')
+    assert exported['_x_'].null_count == 1
+    assert np.isnan(exported['_x_'][1].as_py())
 
 
 @pytest.mark.parametrize("backend", ["polars", "arrow"])
@@ -178,7 +187,7 @@ def test_partial_profile_accepts_one_native_missing_intervention(backend):
 
 
 @pytest.mark.parametrize("backend", ["polars", "arrow"])
-def test_combined_cp_objects_cannot_merge_null_and_nan_interventions(backend):
+def test_combined_cp_objects_keep_null_and_nan_interventions(backend):
     data = pl.DataFrame({"x": [1., None, np.nan, 3.], "z": [2., 5., 1., 4.]})
     data = data if backend == "polars" else data.to_arrow()
     model = NullNanModel()
@@ -186,8 +195,12 @@ def test_combined_cp_objects_cannot_merge_null_and_nan_interventions(backend):
     profiles = [exp.predict_profile(take_rows(data, [0]), variable_splits={"x": [value]}, verbose=False)
                 for value in (None, np.nan)]
     from dalex.model_explanations import AggregatedProfiles
-    with pytest.raises(ValueError, match="distinct native null and NaN"):
-        AggregatedProfiles().fit(profiles, verbose=False)
+    result = AggregatedProfiles()
+    result.fit(profiles, verbose=False)
+    import narwhals.stable.v2 as nw
+    native = nw.from_native(result.result_as())
+    assert native['_x_kind_'].to_list() == ['null', 'nan']
+    np.testing.assert_allclose(native['_yhat_'].to_numpy(), [11., 23.])
 
 
 @pytest.mark.parametrize("backend", ["polars", "arrow"])

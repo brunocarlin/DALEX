@@ -39,8 +39,14 @@ def single_profile(predict, model, data, variable, splits, label=None):
             working = frame.with_columns(nw.new_series(variable, replacements, dtype=nw.Float64,
                                                        backend=namespace)).to_native()
         else:
-            replacements = ([None if _missing(value) else float(value) for value in replacements]
-                            if any(_missing(value) for value in replacements) else replacements.astype(float))
+            integer_grid = original_column.dtype.is_integer() and all(
+                _missing(value) or isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_))
+                for value in replacements)
+            if integer_grid:
+                replacements = [None if _missing(value) else int(value) for value in replacements]
+            else:
+                replacements = ([None if _missing(value) else float(value) for value in replacements]
+                                if any(_missing(value) for value in replacements) else replacements.astype(float))
             working = set_columns(expanded, {variable: replacements})
     else:
         working = set_columns(expanded, {variable: replacements})

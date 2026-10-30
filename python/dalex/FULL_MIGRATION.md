@@ -82,7 +82,9 @@ The following are gates, not claims that all have been completed:
   contribution/distribution tables. Shapley original-value metadata stays typed;
   use a variable partition for native exports where scalar types cannot be
   combined safely. Legacy result tables and seeded path behavior are retained.
-- Other remaining areas above are still being implemented and audited.
+- Aggregated profiles retain exact large-integer grids and separate native
+  null/NaN bins and memberships. Mixed unsafe scalar layouts use explicit typed
+  partitions, with a compatible combined pandas publication.
 - Arena integration tests cover real models through registration, background
   threads, incremental updates, resource/plot exports, exact timestamp metadata,
   legacy dictionary access and mutation, pickle and strict JSON. EDA handles
@@ -104,6 +106,15 @@ The following are gates, not claims that all have been completed:
   pandas results, caches, pickle and plots. Tied heights now retain every merge;
   constant/all-missing associations normalize consistently. Cache reuse checks
   the random seed and process count as well as explanation settings.
+- Native LIME and sklearn surrogate workflows retain lazy result/performance
+  views, independent exports, plots and pickle. Pandas inputs retain the exact
+  original external classes. External fitting/explanation algorithms use their
+  explicit numeric matrix boundary.
+- Private reference utilities and pandas-only helper branches remain for
+  compatibility; public fit paths use the native implementations above. Plot
+  preparation, legacy writable tables, pandas scalar display formatting and
+  optional PPS are intentional boundaries. Pandas-free installation, lazy
+  execution and untested dataframe engines are outside this contribution.
 
 ## External migration precedents
 

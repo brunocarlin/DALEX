@@ -95,7 +95,8 @@ class VariableImportance(Explanation):
         self.variable_groups = variable_groups
         self.random_state = _random_state
         self.keep_raw_permutations = _keep_raw_permutations
-        self.result = pd.DataFrame()
+        from ..._explanation import EmptyTable
+        self.result = EmptyTable()
         self.permutation = None
         self.processes = _processes
 

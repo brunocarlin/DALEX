@@ -116,7 +116,10 @@ def calculate_single_variable_importance(
 
 
 def nice_format(x):
-    return str(x) if isinstance(x, str) else str(float(signif(x)))
+    value = np.asarray(x)
+    if value.ndim != 0 or value.dtype.kind not in 'biuf':
+        return str(x)
+    return str(float(signif(x)))
 
 
 # https://stackoverflow.com/a/59888924

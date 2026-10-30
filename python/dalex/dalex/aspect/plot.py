@@ -2,6 +2,21 @@ import numpy as np
 from plotly.figure_factory import create_dendrogram
 import plotly.graph_objects as go
 
+
+def copy_dendrogram(fig):
+    """Restore numeric coordinates after Plotly's typed-array serialization."""
+    import base64
+    result = go.Figure(fig)
+    def numeric(values):
+        if isinstance(values, dict) and 'bdata' in values and 'dtype' in values:
+            return np.frombuffer(base64.b64decode(values['bdata']), dtype=values['dtype']).copy()
+        return values
+    for trace in result.data:
+        trace.x = numeric(trace.x)
+        trace.y = numeric(trace.y)
+    result.layout.yaxis.tickvals = numeric(result.layout.yaxis.tickvals)
+    return result
+
 def plot_dendrogram(linkage_matrix, labels=None):
     fig = create_dendrogram(
         linkage_matrix,
@@ -43,7 +58,7 @@ def plot_dendrogram(linkage_matrix, labels=None):
 
 
 def add_text_and_tooltips_to_dendrogram(fig, _dendrogram_aspects_ordered, rounding_function, digits):
-    res_fig = go.Figure(fig)
+    res_fig = copy_dendrogram(fig)
     corner_scatters = [] # scatters with depend=0
     for i, scatter in enumerate(res_fig.data):
         # 0 ---- 1

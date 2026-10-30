@@ -246,3 +246,131 @@ def test_native_contributions_real_models_and_legacy_results(fitted_pipeline, ba
         restored = pickle.loads(pickle.dumps(result))
         pd.testing.assert_frame_equal(restored.result, result.result)
         assert restored.plot(show=False) is not None
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'arrow'])
+@pytest.mark.parametrize('kind', ['model', 'default', 'shap'])
+def test_native_aspect_importance_real_models(fitted_pipeline, backend, kind, monkeypatch):
+    model, original, y, classification = fitted_pipeline
+    data = original.to_pandas() if backend == 'pandas' else original if backend == 'polars' else original.to_arrow()
+    observation = data.head(1) if backend != 'arrow' else data.slice(0, 1)
+    groups = {'numeric': ['x', 'z'], 'category': ['kind'], 'temporal': ['when'], 'membership': ['group']}
+    with threadpool_limits(limits=1):
+        exp = dx.Explainer(model, data, y, label='pipeline', verbose=False)
+        with native_computation_only(monkeypatch, backend):
+            aspect = dx.Aspect(exp)
+            if kind == 'model':
+                result = aspect.model_parts(variable_groups=groups, N=20, B=3, random_state=42)
+                native = result.result_as()
+            else:
+                result = aspect.predict_parts(observation, variable_groups=groups, type=kind, N=20, B=3, random_state=42)
+                native = result.result_as(partition='numeric')
+            assert isinstance(native, type(data))
+            assert '_compatibility_result' not in result.__dict__
+            assert '_compatibility_depend_matrix' not in aspect.__dict__
+        expected_exp = dx.Explainer(model, original.to_pandas(), y, label='pipeline', verbose=False)
+        expected_aspect = dx.Aspect(expected_exp)
+        if kind == 'model':
+            expected = expected_aspect.model_parts(variable_groups=groups, N=20, B=3, random_state=42)
+        else:
+            expected = expected_aspect.predict_parts(original.to_pandas().head(1), variable_groups=groups,
+                                                       type=kind, N=20, B=3, random_state=42)
+            # Independent retained legacy algorithm, not just the same native
+            # implementation on a different input backend.
+            from dalex.aspect._predict_aspect_importance import utils as legacy
+            if kind == 'default':
+                old = legacy.calculate_predict_aspect_importance(expected_exp, original.to_pandas().head(1),
+                                                                   groups, 20, None, 'default', 2, 42)
+            else:
+                old = legacy.calculate_shap_predict_aspect_importance(expected_exp, original.to_pandas().head(1),
+                                                                        groups, 20, 3, 1, 42)
+            np.testing.assert_array_equal(expected.result.aspect_name, old.aspect_name)
+            np.testing.assert_allclose(expected.result.importance, old.importance, atol=1e-12, rtol=1e-12)
+        pd.testing.assert_frame_equal(result.result, expected.result, check_exact=False, atol=1e-10, rtol=1e-10)
+        restored = pickle.loads(pickle.dumps(result))
+        pd.testing.assert_frame_equal(restored.result, result.result)
+        assert restored.plot(show=False) is not None
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'arrow'])
+def test_native_permutation_real_models(fitted_pipeline, backend, monkeypatch):
+    model, original, y, classification = fitted_pipeline
+    data = original.to_pandas() if backend == 'pandas' else original if backend == 'polars' else original.to_arrow()
+    with threadpool_limits(limits=1):
+        exp = dx.Explainer(model, data, y, label='pipeline', verbose=False)
+        with native_computation_only(monkeypatch, backend):
+            result = exp.model_parts(N=20, B=3, random_state=42)
+            assert isinstance(result.result_as(), type(data))
+            assert isinstance(result.result_as(table='permutation'), type(data))
+        expected_exp = dx.Explainer(model, original.to_pandas(), y, label='pipeline', verbose=False)
+        expected = expected_exp.model_parts(N=20, B=3, random_state=42)
+        pd.testing.assert_frame_equal(result.result, expected.result, check_exact=False, atol=1e-10, rtol=1e-10)
+        pd.testing.assert_frame_equal(result.permutation, expected.permutation, check_exact=False, atol=1e-10, rtol=1e-10)
+        assert pickle.loads(pickle.dumps(result)).plot(show=False) is not None
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'arrow'])
+@pytest.mark.parametrize('kind', ['model', 'default', 'shap'])
+def test_native_triplot_real_models(fitted_pipeline, backend, kind, monkeypatch):
+    model, original, y, classification = fitted_pipeline
+    data = original.to_pandas() if backend == 'pandas' else original if backend == 'polars' else original.to_arrow()
+    observation = data.head(1) if backend != 'arrow' else data.slice(0, 1)
+    with threadpool_limits(limits=1):
+        exp = dx.Explainer(model, data, y, label='pipeline', verbose=False, precalculate=False)
+        with native_computation_only(monkeypatch, backend):
+            aspect = dx.Aspect(exp)
+            result = (aspect.model_triplot(N=20, B=3, random_state=42) if kind == 'model' else
+                      aspect.predict_triplot(observation, type=kind, N=20, B=3, random_state=42))
+            assert isinstance(result.result_as(), type(data))
+            assert isinstance(result.result_as(table='single_variable_importance'), type(data))
+            assert len(nw.from_native(result.result_as())) == len(original.columns) - 1
+            assert '_compatibility_result' not in result.__dict__
+            assert '_compatibility_depend_matrix' not in aspect.__dict__
+            if kind == 'model':
+                cached = aspect.model_parts(N=20, B=3, random_state=42)
+                assert isinstance(cached.result_as(), type(data))
+        expected_exp = dx.Explainer(model, original.to_pandas(), y, label='pipeline', verbose=False)
+        expected_aspect = dx.Aspect(expected_exp)
+        expected = (expected_aspect.model_triplot(N=20, B=3, random_state=42) if kind == 'model' else
+                    expected_aspect.predict_triplot(original.to_pandas().head(1), type=kind, N=20, B=3, random_state=42))
+        pd.testing.assert_frame_equal(result.result, expected.result, check_exact=False, atol=1e-10, rtol=1e-10)
+        pd.testing.assert_frame_equal(result.single_variable_importance, expected.single_variable_importance,
+                                      check_exact=False, atol=1e-10, rtol=1e-10)
+        if kind == 'model':
+            expected_cached = expected_aspect.model_parts(N=20, B=3, random_state=42)
+            pd.testing.assert_frame_equal(cached.result, expected_cached.result, check_exact=False, atol=1e-10, rtol=1e-10)
+        restored = pickle.loads(pickle.dumps(result))
+        pd.testing.assert_frame_equal(restored.result, result.result)
+        assert restored.plot(show=False) is not None
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'arrow'])
+def test_native_fairness_real_models_and_legacy_views(fitted_pipeline, backend, monkeypatch, capsys):
+    model, original, y, classification = fitted_pipeline
+    data = original.to_pandas() if backend == 'pandas' else original if backend == 'polars' else original.to_arrow()
+    protected = np.tile(['a', 'b'], len(y)//2)
+    with threadpool_limits(limits=1):
+        exp = dx.Explainer(model, data, y, label='pipeline', verbose=False, precalculate=False)
+        with native_computation_only(monkeypatch, backend):
+            result = exp.model_fairness(protected, 'a')
+            assert isinstance(result.result_as(), type(data))
+            if classification:
+                assert isinstance(result.result_as(table='metric_scores'), type(data))
+                assert isinstance(result.result_as(table='parity_loss'), type(data))
+            restored = pickle.loads(pickle.dumps(result))
+            assert isinstance(restored.result_as(), type(data))
+            assert '_compatibility_result' not in result.__dict__
+        expected_exp = dx.Explainer(model, original.to_pandas(), y, label='pipeline', verbose=False)
+        expected = expected_exp.model_fairness(protected, 'a')
+        pd.testing.assert_frame_equal(result.result, expected.result, check_exact=False, atol=1e-10, rtol=1e-10)
+        assert restored.plot(show=False) is not None
+        result.fairness_check(verbose=False)
+        assert 'Conclusion:' in capsys.readouterr().out
+        if classification:
+            pd.testing.assert_frame_equal(result.metric_scores, expected.metric_scores)
+            pd.testing.assert_series_equal(result.parity_loss, expected.parity_loss)
+            assert restored.plot(type='metric_scores', show=False) is not None
+            result.parity_loss.iloc[0] = 12.
+            assert nw.from_native(result.result_as(table='parity_loss'))['score'][0] == 12.
+        result.result.iloc[0, 0] = 7.
+        assert nw.from_native(result.result_as()).drop('subgroup').to_numpy()[0, 0] == 7.

@@ -65,6 +65,16 @@ def capture(root):
     table('model_aspect', aspect.model_parts(N=20, B=3, random_state=42).result)
     table('predict_triplot', aspect.predict_triplot(frame.iloc[[2]], N=20, B=3, random_state=42).result)
     table('model_triplot', aspect.model_triplot(N=20, B=3, random_state=42).result)
+    protected = np.tile(['a', 'b'], len(frame)//2)
+    table('fairness_regression', explainer.model_fairness(protected, 'a').result)
+    from sklearn.linear_model import LogisticRegression
+    binary = (y > np.median(y)).astype(int)
+    classifier = LogisticRegression().fit(frame, binary)
+    classification = dx.Explainer(classifier, frame, binary, verbose=False, label='classifier')
+    fairness = classification.model_fairness(protected, 'a')
+    table('fairness_classification', fairness.result)
+    table('fairness_scores', fairness.metric_scores)
+    result['fairness_parity_loss'] = fairness.parity_loss.to_numpy().tolist()
     return result
 
 

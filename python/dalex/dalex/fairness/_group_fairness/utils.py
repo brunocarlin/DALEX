@@ -2,6 +2,8 @@ from copy import deepcopy
 
 import numpy as np
 import pandas as pd
+import narwhals.stable.v2 as nw
+from ._table import FairnessTable, ParityTable
 
 from . import checks
 from ... import _global_checks
@@ -87,7 +89,7 @@ class SubgroupConfusionMatrixMetrics:
                           'FNR': FNR, 'FPR': FPR, "FDR": FDR, 'FOR': FOR, 'ACC': ACC, 'STP': STP}
 
             for metric in cf_metrics.keys():
-                if not pd.isna(cf_metrics.get(metric)):
+                if not np.isnan(cf_metrics.get(metric)):
                     cf_metrics[metric] = round(cf_metrics.get(metric), 3)
 
             subgroup_confusion_matrix_metrics[sub] = deepcopy(cf_metrics)
@@ -111,6 +113,13 @@ class SubgroupConfusionMatrixMetrics:
         metrics = self.subgroup_confusion_matrix_metrics
         return pd.DataFrame(metrics).transpose()
 
+    def to_native_table(self, backend='pandas'):
+        metrics = self.subgroup_confusion_matrix_metrics
+        columns = list(next(iter(metrics.values())))
+        values = {'subgroup': list(metrics)}
+        values.update({name: np.asarray([row[name] for row in metrics.values()], dtype=float) for name in columns})
+        return FairnessTable(nw.from_dict(values, backend=backend).to_native())
+
     def __str__(self):
 
         return f'Object _SubgroupConfusionMatrixMetrics was converted` to data frame, top rows: \n' \
@@ -119,40 +128,25 @@ class SubgroupConfusionMatrixMetrics:
 
 # -------------- Functions needed in creation and methods of GroupFairnessClassification object in object.py --------------
 
-def calculate_parity_loss(sub_confusion_matrix_metrics, privileged):
-    """
-    Calculates parity_loss with formula
-    M_parity_loss = sum(|log(M/M_p)|)
+def calculate_parity_loss(sub_confusion_matrix_metrics, privileged, *, native=False, backend='pandas'):
+    table = calculate_ratio(sub_confusion_matrix_metrics, privileged, native=True, backend=backend)
+    frame = nw.from_native(table.data, eager_only=True).drop('subgroup')
+    values = np.sum(np.abs(np.log(frame.to_numpy())), axis=0)
+    result = ParityTable(nw.from_dict({'metric': frame.columns, 'score': values}, backend=backend).to_native())
+    return result if native else result._dalex_pandas_view()
 
-    where
-    M - vector of metrics for each subgroup
-    M_p - value in metric for privileged subgroup
-    """
+
+def calculate_ratio(sub_confusion_matrix_metrics, privileged, *, native=False, backend='pandas'):
     assert isinstance(sub_confusion_matrix_metrics, SubgroupConfusionMatrixMetrics)
-    df_ratio = calculate_ratio(sub_confusion_matrix_metrics, privileged)
-    columns = df_ratio.columns
-    df_log = np.log(df_ratio.to_numpy())
-    df_absolute_log = abs(df_log)
-    df_summed = pd.DataFrame(df_absolute_log, index=df_ratio.index.values, columns=columns).apply(sum)
-    return df_summed
-
-
-def calculate_ratio(sub_confusion_matrix_metrics, privileged):
-    """
-    Calculates ratio of metrics - divides all by privileged
-    Does not allow for zeros in ratios, instead puts NaN
-    """
-    assert isinstance(sub_confusion_matrix_metrics, SubgroupConfusionMatrixMetrics)
-    df = sub_confusion_matrix_metrics.to_horizontal_DataFrame()
-
-    privileged_index = np.where(df.index.values == privileged)[0][0]
-    df_ratio = df / df.iloc[privileged_index, :]
-    # pandas 3 copy-on-write exports a read-only view. Mask our own array.
-    df_ratio = df_ratio.to_numpy(copy=True)
-    df_ratio[df_ratio == 0] = np.nan
-    df_ratio[np.isinf(df_ratio)] = np.nan
-    df_out = pd.DataFrame(df_ratio, index=df.index.values, columns=df.columns)
-    return df_out
+    rows = sub_confusion_matrix_metrics.subgroup_confusion_matrix_metrics
+    groups = list(rows)
+    columns = list(next(iter(rows.values())))
+    matrix = np.asarray([[row[name] for name in columns] for row in rows.values()], dtype=float)
+    values = matrix / matrix[groups.index(privileged)]
+    values[(values == 0) | np.isinf(values)] = np.nan
+    result = FairnessTable(nw.from_dict({'subgroup': groups, **{name: values[:, i] for i, name in enumerate(columns)}},
+                                        backend=backend).to_native())
+    return result if native else result._dalex_pandas_view()
 
 
 # -------------- Functions used in plots --------------
@@ -284,7 +278,7 @@ class RegressionDict:
 
 # -------------- Functions needed in creation and methods of GroupFairnessRegression object in object.py --------------
 
-def calculate_regression_measures(y, y_hat, protected, privileged):
+def calculate_regression_measures(y, y_hat, protected, privileged, *, native=False, backend='pandas'):
     _global_checks.global_check_import('scikit-learn', 'fairness in regression')
     from sklearn.linear_model import LogisticRegression
 
@@ -319,28 +313,14 @@ def calculate_regression_measures(y, y_hat, protected, privileged):
         r_sep = ((pred_p_ys / (1 - pred_p_ys) * (1 - pred_p_y) / pred_p_y)).mean()
         r_suf = ((pred_p_ys / (1 - pred_p_ys)) * ((1 - pred_p_s) / pred_p_s)).mean()
 
-        to_append = pd.DataFrame({'subgroup': [unprivileged],
-                                  'independence': [r_ind],
-                                  'separation': [r_sep],
-                                  'sufficiency': [r_suf]})
-        data_list.append(to_append)
+        data_list.append((unprivileged, r_ind, r_sep, r_suf))
+    columns = ['subgroup', 'independence', 'separation', 'sufficiency']
+    values = {name: [row[i] for row in data_list] if i == 0 else np.asarray([row[i] for row in data_list], dtype=float)
+              for i, name in enumerate(columns)}
+    data = nw.from_dict(values, backend=backend).to_native()
+    result = FairnessTable(data, index_name='subgroup', empty_objects=True)
+    return result if native else result._dalex_pandas_view()
 
-    if data_list:
-        data = pd.concat(data_list, ignore_index=True)
-    else:
-        data = pd.DataFrame(columns=['subgroup', 'independence', 'separation', 'sufficiency'])
-
-    # append the scale
-    to_append = pd.DataFrame({'subgroup': [privileged],
-                              'independence': [1],
-                              'separation': [1],
-                              'sufficiency': [1]})
-    ## TODO: this should be uncommented but adds blanks to the plots
-    # data = pd.concat([data, to_append]) 
-
-    data.index = data.subgroup
-    data = data.iloc[:, 1:]
-    return data
 
 
 # -------------- Helper functions --------------

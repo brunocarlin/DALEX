@@ -53,35 +53,10 @@ def calculate_cat_num_assoc_matrix(data, categorical_variables, numerical_variab
     return cat_num_assoc_matrix
 
 
-def calculate_assoc_matrix(data, corr_method):
-    # Statistical correlation/contingency boundary. Prediction batches stay native.
-    if not isinstance(data, pd.DataFrame):
-        data = to_pandas(data)
-    try:
-        corr_matrix = abs(data.corr(corr_method, numeric_only=True))
-    except TypeError:
-        # Older pandas ArrowExtensionArray.to_numpy ignores na_value before a
-        # float cast, so corr fails on pd.NA. Normalize only this statistics
-        # copy; model feature storage and exact integer observations stay native.
-        numeric_arrow = [name for name in data if isinstance(data[name].dtype, pd.ArrowDtype)
-                         and data[name].dtype.kind in 'biuf']
-        if not numeric_arrow:
-            raise
-        data = data.copy()
-        for name in numeric_arrow:
-            data[name] = np.asarray(data[name].array.__arrow_array__().to_numpy(), dtype=float)
-        corr_matrix = abs(data.corr(corr_method, numeric_only=True))
-    numerical_variables = corr_matrix.columns 
-    categorical_variables = list(set(data.columns) - set(numerical_variables))
-    n = len(data)
-    cat_assoc_matrix = calculate_cat_assoc_matrix(data, categorical_variables, n) # get submatrix for only categorical variables
-    cat_num_assoc_matrix = calculate_cat_num_assoc_matrix(          # get submatrix for mixed variables
-        data, categorical_variables, numerical_variables, n
-    )
-    tmp_matrix = pd.concat([corr_matrix, cat_num_assoc_matrix.T], axis=1)
-    tmp_matrix_2 = pd.concat([cat_num_assoc_matrix, cat_assoc_matrix], axis=1)
-    assoc_matrix = pd.concat([tmp_matrix, tmp_matrix_2])
-    return assoc_matrix
+def calculate_assoc_matrix(data, corr_method, *, native=False):
+    from ._native_dependence import associations
+    table = associations(data, corr_method)
+    return table if native else table._dalex_pandas_view()
 
 
 def calculate_pps_matrix(data, agg_method):
@@ -107,45 +82,39 @@ def calculate_pps_matrix(data, agg_method):
     return pps_matrix
 
 
-def calculate_depend_matrix(
-    data, depend_method, corr_method, agg_method
-):
-    depend_matrix = pd.DataFrame()
+def calculate_depend_matrix(data, depend_method, corr_method, agg_method, *, native=False):
+    from ._native_dependence import normalize_missing
     if depend_method == "assoc":
-        depend_matrix = calculate_assoc_matrix(data, corr_method)
-    if depend_method == "pps":
-        depend_matrix = calculate_pps_matrix(data, agg_method)
-    if callable(depend_method):
+        table = calculate_assoc_matrix(data, corr_method, native=True)
+    elif depend_method == "pps":
+        table = calculate_pps_matrix(data, agg_method)
+    elif callable(depend_method):
         try:
-            depend_matrix = depend_method(data)
-        except:
-            raise ValueError(
-                "You have passed wrong callable in depend_method argument. "
-                "'depend_method' is the callable to use for calculating dependency matrix."
-            )
-    
-    # if there is a non-varying column in data, there will be NaN values in the 'depend_matrix'.
-    # replace NaN values on the diagonal with 1 and others with 0. 
-    if depend_matrix.isnull().any(axis=None):
-        warnings.warn("There were NaNs in `depend_matrix`. This is possibly because there is a feature in the data with only one unique value. Replacing NaN values on the diagonal with 1 and others with 0.")
-        depend_matrix[depend_matrix.isnull()] = 0
-        for i in range(depend_matrix.shape[0]):
-            depend_matrix.iloc[i,i] = 1
-    
-    return depend_matrix
+            table = depend_method(data)
+        except Exception as exc:
+            raise ValueError("You have passed wrong callable in depend_method argument. "
+                             "'depend_method' is the callable to use for calculating dependency matrix.") from exc
+    else:
+        raise ValueError('Unknown dependence method')
+    table = normalize_missing(table)
+    if native:
+        return table
+    return table._dalex_pandas_view() if hasattr(type(table), '_dalex_pandas_view') else table
 
 
 def calculate_linkage_matrix(depend_matrix, clust_method):
     from scipy.cluster.hierarchy import linkage
     from scipy.spatial.distance import squareform
-    dissimilarity = 1 - abs(depend_matrix)
+    from ._native_dependence import matrix_values
+    values, names = matrix_values(depend_matrix)
+    dissimilarity = 1 - abs(values)
     ## https://www.kaggle.com/sgalella/correlation-heatmaps-with-hierarchical-clustering?scriptVersionId=24045077&cellId=10
     linkage_matrix = linkage(squareform(dissimilarity), clust_method)
 
     return linkage_matrix
 
 
-def get_dendrogram_aspects_ordered(hierarchical_clustering_dendrogram, depend_matrix):
+def get_dendrogram_aspects_ordered(hierarchical_clustering_dendrogram, depend_matrix, *, native=False):
     # names of variables on axis
     tick_dict = dict(
         zip(
@@ -153,7 +122,9 @@ def get_dendrogram_aspects_ordered(hierarchical_clustering_dendrogram, depend_ma
             [[var] for var in hierarchical_clustering_dendrogram.layout.yaxis.ticktext]
         )
     )
-    d = {k:v for v,k in enumerate(depend_matrix.columns)} # original order of columns
+    from ._native_dependence import matrix_values
+    _, names = matrix_values(depend_matrix)
+    d = {k:v for v,k in enumerate(names)} # original order of columns
     
     # get names of variables for dendrogram traces
     _aspects_dendrogram_order = []
@@ -168,28 +139,36 @@ def get_dendrogram_aspects_ordered(hierarchical_clustering_dendrogram, depend_ma
     # get min dependency between grouped variables
     _vars_min_depend, _min_depend = get_min_depend_from_matrix(depend_matrix, _aspects_dendrogram_order)
 
-    return pd.DataFrame({
-        "variable_names": _aspects_dendrogram_order,
-        "min_depend": _min_depend,
-        "vars_min_depend": _vars_min_depend
-    })
+    if not native:
+        return pd.DataFrame({"variable_names": _aspects_dendrogram_order,
+                             "min_depend": _min_depend, "vars_min_depend": _vars_min_depend})
+    import narwhals.stable.v2 as nw
+    from .._explanation import IndexedTable
+    reference = depend_matrix.data if isinstance(depend_matrix, IndexedTable) else depend_matrix
+    backend = nw.get_native_namespace(nw.from_native(reference, eager_only=True))
+    return IndexedTable(nw.from_dict({"variable_names": _aspects_dendrogram_order,
+                                      "min_depend": _min_depend,
+                                      "vars_min_depend": [x.tolist() for x in _vars_min_depend]},
+                                     backend=backend).to_native())
 
 
-def get_min_depend_from_matrix(depend_matrix, variables_list): 
-    _vars_min_depend = []
-    _min_depend = []
-    for vars in variables_list:
-        if isinstance(vars, (list, tuple, np.ndarray)):
-            depend_submatrix = abs(depend_matrix).loc[list(vars), list(vars)]
-            _min = np.array(depend_submatrix).min()
-            _min_idx = np.where(depend_submatrix == _min)
-            var_a_idx, var_b_idx = _min_idx[0][0], _min_idx[1][0]
-            _vars_min_depend.append(np.array(depend_submatrix.columns[[var_a_idx, var_b_idx]]))
-            _min_depend.append(_min)
+def get_min_depend_from_matrix(depend_matrix, variables_list):
+    from ._native_dependence import matrix_values
+    values, names = matrix_values(depend_matrix)
+    positions = {name: i for i, name in enumerate(names)}
+    minima, pairs = [], []
+    for variables in variables_list:
+        if isinstance(variables, (list, tuple, np.ndarray)):
+            ids = [positions[name] for name in variables]
+            sub = abs(values[np.ix_(ids, ids)])
+            minimum = sub.min()
+            i, j = np.argwhere(sub == minimum)[0]
+            pairs.append(np.asarray([variables[i], variables[j]]))
+            minima.append(minimum)
         else:
-            _vars_min_depend.append(None)
-            _min_depend.append(None)
-    return _vars_min_depend, _min_depend
+            pairs.append(None)
+            minima.append(None)
+    return pairs, minima
 
 
 def calculate_min_depend(
@@ -199,5 +178,5 @@ def calculate_min_depend(
     corr_method="spearman",
     agg_method="max",
 ): 
-    depend_matrix = calculate_depend_matrix(data, depend_method, corr_method, agg_method)
+    depend_matrix = calculate_depend_matrix(data, depend_method, corr_method, agg_method, native=True)
     return get_min_depend_from_matrix(depend_matrix, variables_list)

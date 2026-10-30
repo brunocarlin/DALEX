@@ -918,23 +918,29 @@ class Explainer:
         - Steinberg, D., et al. (2020) https://arxiv.org/pdf/2001.06089.pdf
         """
 
+        import narwhals.stable.v2 as nw
+        backend = nw.get_native_namespace(nw.from_native(self.data, eager_only=True))
+        predictions = self.y_hat if self.y_hat is not None else self.predict(self.data)
+
         if self.model_type == 'classification':
             fobject = GroupFairnessClassification(y=self.y,
-                                                  y_hat=self.y_hat,
+                                                  y_hat=predictions,
                                                   protected=protected,
                                                   privileged=privileged,
                                                   cutoff=cutoff,
                                                   epsilon=epsilon,
                                                   label=self.label,
+                                                  _backend=backend,
                                                   **kwargs)
 
         elif self.model_type == 'regression':
             fobject = GroupFairnessRegression(y=self.y,
-                                              y_hat=self.y_hat,
+                                              y_hat=predictions,
                                               protected=protected,
                                               privileged=privileged,
                                               epsilon=epsilon,
                                               label=self.label,
+                                                  _backend=backend,
                                               **kwargs)
 
         else :

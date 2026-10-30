@@ -11,6 +11,13 @@
 * compute performance/diagnostics and breakdown/Shapley tables natively while
   retaining pandas result indexes, raw distributions and mutable legacy views
 * calculate ROC-AUC directly from vectors without rounding large integer scores
+* compute Aspect statistics, importance and triplot hierarchies natively; export
+  mixed observation values as typed structs and retain legacy pandas cells
+* retain intermediate merges at tied clustering heights, invalidate triplot
+  caches when seeds/process counts change, and restore numeric Plotly coordinates
+  after typed-array serialization for subsequent plot calculations
+* retain native classification/regression fairness tables and parity vectors,
+  materializing historical subgroup indexes/Series only at the pandas boundary
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON

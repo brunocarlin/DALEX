@@ -7,6 +7,8 @@ from dalex.model_explanations._variable_importance.object import VariableImporta
 from dalex.aspect.utils import calculate_min_depend, get_min_depend_from_matrix
 
 from . import plot, checks
+import narwhals.stable.v2 as nw
+from .._table import AspectTable
 
 
 class ModelAspectImportance(VariableImportance):
@@ -101,7 +103,8 @@ class ModelAspectImportance(VariableImportance):
             random_state,
         )
         _depend_method, _corr_method, _agg_method = checks.check_method_depend(depend_method, corr_method, agg_method)
-        self.result = pd.DataFrame()
+        from ..._explanation import EmptyTable
+        self.result = EmptyTable()
         self._depend_matrix = None
         if "_depend_matrix" in kwargs:
             self._depend_matrix = kwargs.get("_depend_matrix")
@@ -131,43 +134,19 @@ class ModelAspectImportance(VariableImportance):
 
         super().fit(explainer)
 
-        self.result["variable_names"] = self.result["variable"].map(self.variable_groups)
-        baseline = self.result[self.result["variable"] == "_full_model_"]["dropout_loss"].values[0]
-        self.result = self.result.assign(
-            dropout_loss_change=lambda x: x["dropout_loss"] - baseline
-        )
-        self.result = self.result.rename(columns={"variable": "aspect_name"})
-        self.result.insert(4, "min_depend", None)
-        self.result.insert(5, "vars_min_depend", None)
-        # if there is _depend_matrix in kwargs (called from Aspect object) 
+        frame = nw.from_native(self.__dict__['result'], eager_only=True)
+        names = [self.variable_groups.get(name) for name in frame['variable'].to_list()]
+        baseline = frame.filter(nw.col('variable') == '_full_model_')['dropout_loss'][0]
+        frame = frame.with_columns((nw.col('dropout_loss') - baseline).alias('dropout_loss_change'))
+        frame = frame.rename({'variable': 'aspect_name'})
         if self._depend_matrix is not None:
-            vars_min_depend, min_depend = get_min_depend_from_matrix(self._depend_matrix, 
-                    self.result.variable_names
-                )
+            pairs, minima = get_min_depend_from_matrix(self._depend_matrix, names)
         else:
-            vars_min_depend, min_depend = calculate_min_depend(
-                self.result.variable_names, 
-                explainer.data,
-                self.depend_method,
-                self.corr_method,
-                self.agg_method,
-            )
+            pairs, minima = calculate_min_depend(names, explainer.data, self.depend_method,
+                                                 self.corr_method, self.agg_method)
+        frame = frame.with_columns(nw.new_series('min_depend', minima, backend=nw.get_native_namespace(frame)))
+        self.result = AspectTable(frame.to_native(), names, pairs)
 
-        self.result["min_depend"] = min_depend
-        self.result["vars_min_depend"] = vars_min_depend
-
-        self.result = self.result[
-            [
-                "aspect_name",
-                "variable_names",
-                "dropout_loss",
-                "dropout_loss_change",
-                "min_depend",
-                "vars_min_depend",
-                "label",
-            ]
-        ]
-      
 
     def plot(
         self,

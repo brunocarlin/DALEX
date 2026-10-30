@@ -3,7 +3,10 @@ import pandas as pd
 from plotly.subplots import make_subplots
 
 from dalex import _theme, _global_checks, _global_utils
-from dalex._explanation import Explanation
+from dalex._explanation import Explanation, EmptyTable
+import narwhals.stable.v2 as nw
+from .._table import AspectTable
+from ..._dataframe import copy_for_edit
 from dalex.aspect.utils import calculate_min_depend, get_min_depend_from_matrix
 
 from . import checks, utils, plot
@@ -141,7 +144,7 @@ class PredictAspectImportance(Explanation):
         self.processes = _processes
         self.prediction = None
         self.intercept = None
-        self.result = pd.DataFrame()
+        self.result = EmptyTable()
 
     def _repr_html_(self):
         return self.result._repr_html_()
@@ -169,47 +172,21 @@ class PredictAspectImportance(Explanation):
         self.intercept = (explainer.y_hat if explainer.y_hat is not None
                           else explainer.predict(explainer.data)).mean()
         
-        if self.type == "default":
-            self.result = utils.calculate_predict_aspect_importance(
-                explainer,
-                _new_observation,
-                _variable_groups,
-                self.N,
-                self.n_aspects,
-                self.sample_method,
-                self.f,
-                self.random_state,
-            )
-        else:
-            self.result = utils.calculate_shap_predict_aspect_importance(
-                explainer, 
-                _new_observation,
-                _variable_groups,
-                self.N,
-                self.B,
-                self.processes,
-                self.random_state
-            )
-
-        self.result.insert(4, "min_depend", None)
-        self.result.insert(5, "vars_min_depend", None)
-
-        # if there is _depend_matrix in kwargs (called from Aspect object) 
+        from .._native_importance import calculate
+        data, names, value_lists = calculate(explainer, _new_observation, _variable_groups,
+                                             kind=self.type, N=self.N, n_aspects=self.n_aspects,
+                                             sample_method=self.sample_method, f=self.f, B=self.B,
+                                             processes=self.processes, random_state=self.random_state)
         if self._depend_matrix is not None:
-            vars_min_depend, min_depend = get_min_depend_from_matrix(self._depend_matrix, 
-                    self.result.variable_names
-                )
+            pairs, minima = get_min_depend_from_matrix(self._depend_matrix, names)
         else:
-            vars_min_depend, min_depend = calculate_min_depend(
-                self.result.variable_names, 
-                explainer.data,
-                self.depend_method,
-                self.corr_method,
-                self.agg_method,
-            )
+            pairs, minima = calculate_min_depend(names, explainer.data, self.depend_method,
+                                                 self.corr_method, self.agg_method)
+        frame = nw.from_native(data, eager_only=True)
+        frame = frame.with_columns(nw.new_series('min_depend', minima, backend=nw.get_native_namespace(frame)))
+        self.result = AspectTable(frame.to_native(), names, pairs, copy_for_edit(_new_observation),
+                                  value_lists=value_lists)
 
-        self.result["min_depend"] = min_depend
-        self.result["vars_min_depend"] = vars_min_depend
 
     def plot(
         self,

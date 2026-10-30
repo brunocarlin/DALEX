@@ -1,4 +1,5 @@
 import numpy as np
+from ..plot import copy_dendrogram
 import plotly.graph_objects as go
 from copy import deepcopy 
 
@@ -16,7 +17,7 @@ def plot_predict_hierarchical_importance(
     absolute_value,
     type
 ):
-    dendrogram_hierarchical_importance = go.Figure(dendrogram_hierarchical_correlation)
+    dendrogram_hierarchical_importance = copy_dendrogram(dendrogram_hierarchical_correlation)
     importance_dict = {}
     min_imp = min(hierarchical_importance_data["importance"])
     max_imp = max(hierarchical_importance_data["importance"])
@@ -134,7 +135,7 @@ def tooltip_text_single(row, rounding_function, digits):
 
 
 def add_text_to_dendrogram(fig, updated, rounding_function, digits, type="clustering"):
-    res_fig = go.Figure(fig)
+    res_fig = copy_dendrogram(fig)
     corner_scatters = [] 
     for i, scatter in enumerate(res_fig.data):
         if i in updated:

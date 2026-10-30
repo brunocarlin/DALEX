@@ -1,4 +1,5 @@
 import numpy as np
+from ..plot import copy_dendrogram
 import plotly.graph_objects as go
 from copy import deepcopy 
 
@@ -12,7 +13,7 @@ def plot_model_hierarchical_importance(
     digits,
     change
 ):
-    dendrogram_hierarchical_importance = go.Figure(dendrogram_hierarchical_correlation)
+    dendrogram_hierarchical_importance = copy_dendrogram(dendrogram_hierarchical_correlation)
     importance_dict = {}
     max_imp = max(hierarchical_importance_data["dropout_loss_change"]) if change else max(hierarchical_importance_data["dropout_loss"])
 
@@ -169,7 +170,7 @@ def plot_single_aspects_importance(
 
 
 def add_text_to_model_importance_dendrogram(fig, hierarchical_importance_data):
-    res_fig = go.Figure(fig)
+    res_fig = copy_dendrogram(fig)
     for scatter in res_fig.data:
         k = np.where(hierarchical_importance_data["dropout_loss"] == scatter.x[1])[0][0]
         x_cord = scatter.x[1]
@@ -227,7 +228,7 @@ def tooltip_text_single(row, rounding_function, digits):
 
 
 def add_text_to_dendrogram(fig, updated_dendro_traces, rounding_function, digits, type="clustering"):
-    res_fig = go.Figure(fig)
+    res_fig = copy_dendrogram(fig)
     for i, scatter in enumerate(res_fig.data):
         if i in updated_dendro_traces:
             x_cord = scatter.x[1]

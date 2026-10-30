@@ -496,6 +496,19 @@ def numeric_columns(data):
     return [name for name, dtype in as_eager_dataframe(data).schema.items() if dtype.is_numeric()]
 
 
+def categorical_levels(series):
+    """Declared Enum levels also work with old Narwhals on Polars 2."""
+    if isinstance(series.dtype, nw.Enum):
+        return nw.new_series(series.name, list(series.dtype.categories), dtype=nw.String,
+                             backend=nw.get_native_namespace(series))
+    try:
+        return series.cat.get_categories()
+    except (AttributeError, NotImplementedError):
+        # Polars 2 Categorical has no fixed category list; older Narwhals still
+        # calls its removed get_categories method. Enum remains fixed above.
+        return series.drop_nulls().unique()
+
+
 def frame_from_values(values, reference, columns=None):
     """Explicit NumPy-library boundary: restore native feature batches for callbacks."""
     names = list(column_names(reference)) if columns is None else list(columns)

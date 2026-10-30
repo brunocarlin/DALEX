@@ -111,3 +111,13 @@ def test_all_missing_category_has_no_join_keys(backend, monkeypatch):
         aspect = dx.Aspect(SimpleNamespace(data=data))
     assert aspect.depend_matrix.loc['x', 'absent'] == 0.
     assert aspect.depend_matrix.loc['absent', 'absent'] == 1.
+
+
+def test_enum_levels_do_not_call_removed_polars_category_api(monkeypatch):
+    import narwhals.stable.v2 as nw
+    from dalex._dataframe import categorical_levels
+    series = nw.from_native(pl.Series('value', ['a', 'a'], dtype=pl.Enum(['a', 'unused'])), series_only=True)
+    def forbidden(*args, **kwargs):
+        raise AttributeError('Removed in Polars 2')
+    monkeypatch.setattr(type(series.cat), 'get_categories', forbidden)
+    assert categorical_levels(series).to_list() == ['a', 'unused']

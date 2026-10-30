@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 import narwhals.stable.v2 as nw
 from .._explanation import IndexedTable
-from .._dataframe import column_values
+from .._dataframe import column_values, categorical_levels
 
 
 def matrix_values(table):
@@ -122,7 +122,7 @@ def associations(data, method):
                 dtype = frame.schema[category]
                 if (isinstance(dtype, (nw.Categorical, nw.Enum)) and pandas is not None
                         and int(pandas.__version__.split('.')[0]) < 3):
-                    count = max(count, len(frame[category].cat.get_categories()))
+                    count = max(count, len(categorical_levels(frame[category])))
                 samples = [vectors[number][membership == k] for k in range(count)]
                 if count < 2 or n == count:
                     value = np.nan

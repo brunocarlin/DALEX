@@ -1,4 +1,4 @@
-import pandas as pd
+from .._native_resources import ShapRecords, records
 import numpy as np
 from ..._dataframe import take_rows
 from .._resource import Resource
@@ -16,12 +16,14 @@ class DatasetShapleyValuesResource(Resource):
     def add_to_data(self, shaps):
         with self.mutex:
             if self.data.get('intercept') is None:
-                self.data['intercept'] = shaps[0].intercept
-            results = [shap.result[shap.result.B != 0] for shap in shaps]
-            if self.data.get('result') is not None:
-                result = pd.concat([self.data['result']] + results)
-            else:
-                result = pd.concat(results)
+                first = shaps[0][0] if isinstance(shaps[0], tuple) else shaps[0]
+                self.data['intercept'] = first.intercept
+            result = self.data.native('result')
+            result = records(result) if result is not None else None
+            for item in shaps:
+                shap, row = item if isinstance(item, tuple) else (item, None)
+                current = ShapRecords.from_shap(shap, row=row)
+                result = current if result is None else result.append(current)
             self.data['result'] = result
 
     def _fit(self, model):
@@ -48,8 +50,7 @@ class DatasetShapleyValuesResource(Resource):
                 B=B,
                 processes=cpus
             )
-            shap.result['row'] = i
-            buffor.append(shap)
+            buffor.append((shap, i))
             # Append buffor to results if buffor size >= 10% of already appended
             if (len(buffor) >= 0.1 * (i + 1 - len(buffor))) or i == rows - 1:
                 self.add_to_data(buffor)

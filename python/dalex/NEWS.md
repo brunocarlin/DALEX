@@ -18,6 +18,10 @@
   after typed-array serialization for subsequent plot calculations
 * retain native classification/regression fairness tables and parity vectors,
   materializing historical subgroup indexes/Series only at the pandas boundary
+* compute Arena attributes, EDA, explanations and background Shapley reductions
+  on native tables; retain lazy pandas resource dictionaries and typed exports
+* add native bundled dataset loaders with explicit optional row identifiers
+* retain nanosecond resource snapshots and independent nested SHAP array exports
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON

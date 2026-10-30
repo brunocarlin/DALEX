@@ -1,6 +1,7 @@
 import threading
 from .params import Param
 from ._option_base import OptionBase
+from ._native_resources import ResourceData
 
 
 class Resource(OptionBase):
@@ -48,7 +49,7 @@ class Resource(OptionBase):
         self.exception = None
         self.is_done = False  # to prevent deadlock it is important that thread cannot acquire mutex after setting this to true
         self.progress = -1
-        self.data = {}
+        self.data = ResourceData()
         self.thread = None
     def fit(self, params):
         """Function starts computations for given params
@@ -111,6 +112,19 @@ class Resource(OptionBase):
         """
         self.update_event.wait()
         self.update_event.clear()
+
+    def result_as(self, backend='native', *, table='result', partition=None):
+        """Export a background table; heterogeneous results support partitions."""
+        if backend not in ('native', 'pandas', 'polars', 'pyarrow'):
+            raise ValueError("backend must be 'native', 'pandas', 'polars' or 'pyarrow'")
+        with self.mutex:
+            original = dict.get(self.data, table)
+            if original is None:
+                return None
+            if not callable(getattr(type(original), '_dalex_native_view', None)):
+                raise ValueError(f'No exportable resource table {table!r}')
+            return original._dalex_native_view(backend, partition=partition,
+                                               pandas_view=self.data._legacy.get(table))
     def _emit_update(self):
         # The consumer acknowledges the event. Clearing here loses notifications
         # when a fast worker finishes before wait_for_update starts waiting.

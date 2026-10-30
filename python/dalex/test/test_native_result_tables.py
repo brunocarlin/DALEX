@@ -16,6 +16,15 @@ class LinearModel:
         return 2 * column_values(data, 'x') + column_values(data, 'z')
 
 
+@pytest.mark.parametrize('container', [list, tuple])
+def test_nested_non_tabular_shap_exports_are_independent(container):
+    value = dx.wrappers.ShapWrapper(type='predict_parts')
+    value.result = container([np.array([1., 2.]), np.array([3., 4.])])
+    exported = value.result_as()
+    exported[0][0] = 99.
+    assert value.result[0][0] == 1.
+
+
 def explainer(backend):
     data = pl.DataFrame({'x': [1., 2., 3., 4.], 'z': [4., 2., 5., 1.]})
     frame = data.to_pandas() if backend == 'pandas' else data if backend == 'polars' else data.to_arrow()

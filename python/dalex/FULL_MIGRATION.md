@@ -21,6 +21,12 @@ implementation commits automatically. PR #587 remains draft for manual review.
 - Fairness auxiliary score exports retain explicit `subgroup` or `metric`
   labels in native tables. The legacy `parity_loss` attribute and its explicit
   pandas export remain a Series, with caller edits respected on later exports.
+- Arena registration, attributes, EDA, profiles, metrics, fairness and background
+  Shapley resources use native tables. Resource dictionaries still publish pandas
+  values lazily; `resource.result_as(partition=feature)` exports typed draws.
+- Dataset loaders accept `backend='polars'|'pyarrow'`, defaulting to pandas.
+  Native defaults contain the historical feature columns; `include_index=True`
+  retains CSV row identifiers as an explicit column instead of a hidden index.
 - CP's native `result_as(partition=variable)` retains each original feature's
   scalar type. Whole-table native exports reject partitions with incompatible
   scalar types or unsafe integer promotion instead of silently stringifying or
@@ -77,6 +83,13 @@ The following are gates, not claims that all have been completed:
   use a variable partition for native exports where scalar types cannot be
   combined safely. Legacy result tables and seeded path behavior are retained.
 - Other remaining areas above are still being implemented and audited.
+- Arena integration tests cover real models through registration, background
+  threads, incremental updates, resource/plot exports, exact timestamp metadata,
+  legacy dictionary access and mutation, pickle and strict JSON. EDA handles
+  all-missing samples and unused categories without altering model data.
+- CSV parser parity tests cover every bundled dataset, optional row identifiers
+  and native loading with pandas construction disabled. The minimum dependency
+  combination and pandas nightly are tested separately from the primary suite.
 - Classification/regression fairness use vector metrics and native result
   tables; subgroup indexes and the pandas parity-loss Series remain compatible.
   Real-model integrations include lazy predictions, native exports, mutation,

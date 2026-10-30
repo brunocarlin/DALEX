@@ -1,4 +1,4 @@
-from .._dataframe import to_pandas, column_names, select_columns
+from .._dataframe import column_names, select_columns
 import threading
 import time
 import numpy as np
@@ -228,17 +228,23 @@ class Arena:
         # display table cannot retain every native null or nullable integer.
         native_observations = None
         if not isinstance(observations, DataFrame):
+            from .params import ObservationDataset
             native_observations = select_columns(observations, column_names(observations))
-            observations = to_pandas(native_observations)
-        if len(observations.index.names) != 1:
-            raise Exception('Observations argument need to have only one index')
-        if not observations.index.is_unique:
-            raise Exception('Observations argument need to have unique indexes')
+            labels = [str(i) for i in range(len(native_observations))]
+            observations = ObservationDataset(native_observations, index=labels)
+        else:
+            if len(observations.index.names) != 1:
+                raise Exception('Observations argument need to have only one index')
+            if not observations.index.is_unique:
+                raise Exception('Observations argument need to have unique indexes')
+            observations = observations.set_index(observations.index.astype(str))
+            labels = observations.index
         precalculate = self.precalculate if precalculate is None else bool(precalculate)
         old_observations = self.list_params('observation')
-        observations = observations.set_index(observations.index.astype(str))
+        if len(set(labels)) != len(labels):
+            raise Exception('Indexes of observations need to be unique after conversion to strings')
         params_objects = []
-        for position, x in enumerate(observations.index):
+        for position, x in enumerate(labels):
             if x in old_observations:
                 raise Exception('Indexes of observations need to be unique across all observations')
             params_objects.append(ObservationParam(dataset=observations, index=x,
@@ -270,13 +276,11 @@ class Arena:
             Overrides constructor `precalculate` parameter when it is not None.
             If true, then only plots using this model will be precalculated.
         """
-        if not isinstance(dataset, DataFrame):
-            dataset = to_pandas(dataset)  # Arena EDA/statistics table boundary
-        if len(dataset.columns.names) != 1:
+        if isinstance(dataset, DataFrame) and len(dataset.columns.names) != 1:
             raise Exception('Dataset argument need to have only one level column names')
         precalculate = self.precalculate if precalculate is None else bool(precalculate)
         target = str(target)
-        if target not in dataset.columns:
+        if target not in column_names(dataset):
             raise Exception('Target is not a column from dataset')
         if (not isinstance(label, str)) or (len(label) == 0):
             raise Exception('Label need to be at least one letter')

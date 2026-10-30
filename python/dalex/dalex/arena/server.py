@@ -1,4 +1,4 @@
-from .._dataframe import to_pandas, column_names, frame_from_values
+from .._dataframe import column_names, frame_from_values
 import logging
 import sys
 import json
@@ -15,8 +15,15 @@ def convert(o):
 def serialize_json(value):
     """Represent nonfinite display values as JSON null without editing sources."""
     def normalize(item):
+        import datetime
         if item is pd.NA or item is pd.NaT:
             return None
+        if isinstance(item, (np.datetime64, np.timedelta64)):
+            return None if np.isnat(item) else str(item)
+        if isinstance(item, (datetime.datetime, datetime.date)):
+            return item.isoformat()
+        if isinstance(item, datetime.timedelta):
+            return str(item)
         if isinstance(item, np.ndarray):
             item = item.tolist()
         elif isinstance(item, np.generic):
@@ -94,7 +101,8 @@ def start_server(arena, host, port, disable_logs, ready=None):
                         for i, name in enumerate(names):
                             values[0, i] = obj.get(name)
                         native = frame_from_values(values, reference)
-                        param = ObservationParam(to_pandas(native), 0, native_dataset=native, position=0)
+                        from .params import ObservationDataset
+                        param = ObservationParam(ObservationDataset(native, index=[0]), 0, native_dataset=native, position=0)
                     result[param_type] = param
                 except:
                     raise Exception('Invalid custom observation')

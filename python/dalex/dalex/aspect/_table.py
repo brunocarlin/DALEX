@@ -1,5 +1,4 @@
 """Typed Aspect results with heterogeneous observation metadata kept separate."""
-import numpy as np
 import narwhals.stable.v2 as nw
 from .._explanation import IndexedTable, export_result_frame
 from .._dataframe import to_pandas

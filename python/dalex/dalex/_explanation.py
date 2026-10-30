@@ -85,7 +85,8 @@ class ResultTables:
         except TypeError:
             if backend != 'native':
                 raise TypeError('This explanation result is not a dataframe') from None
-            return value.copy() if hasattr(value, 'copy') else value
+            from copy import deepcopy
+            return deepcopy(value)
         if not isinstance(frame, nw.DataFrame):
             raise TypeError('This explanation result is not a dataframe')
         namespace = nw.get_native_namespace(frame)

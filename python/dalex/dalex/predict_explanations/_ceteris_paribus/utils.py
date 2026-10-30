@@ -198,25 +198,28 @@ def calculate_variable_split(data,
         numeric = data[variable].dtype.kind in 'iufc' if isinstance(data, pd.DataFrame) else (
             dtype.is_numeric() and not isinstance(dtype, nw.Decimal))
         if numeric:
-            values = column_values(data, variable, preserve_nulls=True)
-            observed = np.asarray([value for value in values if value is not None and value is not pd.NA
-                                   and value is not pd.NaT and not (isinstance(value, (float, np.floating))
-                                                                  and np.isnan(value))])
+            # Reference datasets can contain millions of rows even when only
+            # a small CP sample is explained. Keep missing filtering and range
+            # reductions native; exporting/scanning Python cells made grid
+            # construction dominate the entire sampled explanation.
+            observed = column.drop_nulls()
+            if dtype.is_float():
+                observed = observed.filter(~observed.is_nan())
             if not len(observed):
                 # Native float validity distinguishes null from NaN. An
                 # all-missing column can therefore have two interventions.
                 if not isinstance(data, pd.DataFrame):
-                    absent = column.is_null().to_numpy()
-                    levels = ([None] if absent.any() else []) + ([np.nan] if not absent.all() else [])
-                    column_splits = np.array(levels, dtype=object if absent.any() else float)
+                    count = column.null_count()
+                    levels = ([None] if count else []) + ([np.nan] if count < len(column) else [])
+                    column_splits = np.array(levels, dtype=object if count else float)
                 else:
                     column_splits = np.array([np.nan])
             elif variable_splits_type == 'uniform':
-                column_splits = np.linspace(np.min(observed),
-                                            np.max(observed),
+                column_splits = np.linspace(observed.min(),
+                                            observed.max(),
                                             grid_points)
             else:
-                column_splits = np.unique(np.quantile(observed, probs))
+                column_splits = np.unique(np.quantile(observed.to_numpy(), probs))
             if variable_splits_with_obs:
                 values = np.concatenate((column_splits, column_values(new_observation, variable, preserve_nulls=True)))
                 nulls = [value is None or value is pd.NA or value is pd.NaT for value in values]

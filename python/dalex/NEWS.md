@@ -26,6 +26,8 @@
   native null/NaN bins and groups, and provide typed aggregate partition exports
 * retain lazy native LIME/surrogate result tables with compatible pandas return
   classes, native prediction adapters and pickle-safe plotting callables
+* build automatic numeric profile grids with native missing-value filtering and
+  range reductions, avoiding Python scalar scans of full reference datasets
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON

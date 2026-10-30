@@ -32,6 +32,8 @@
   the historical performance index when an override adds a label column
 * compute base Aspect dendrogram hover geometry without browser rendering,
   including constant coordinate spans
+* avoid filtering/copying clean reference columns and normalize CP split values
+  once per grid; retain exact Decimal counterfactuals instead of floating coercion
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON

@@ -27,13 +27,13 @@ def single_profile(predict, model, data, variable, splits, label=None):
     original = original_column.alias('_original_')
     index = expanded.index.copy() if is_pandas_dataframe(expanded) else positions.copy()
     ids = index.values if is_pandas_dataframe(expanded) else positions
-    replacements = np.tile(splits, data.shape[0])
-    numeric = frame.schema[variable].is_numeric()
+    numeric = frame.schema[variable].is_numeric() and not isinstance(frame.schema[variable], nw.Decimal)
     if is_pandas_dataframe(expanded):
         numeric = expanded[variable].dtype.kind in 'iufc'
     if numeric:
         if is_pandas_dataframe(expanded):
-            replacements = np.asarray([np.nan if _missing(value) else float(value) for value in replacements])
+            points = np.asarray([np.nan if _missing(value) else float(value) for value in splits])
+            replacements = np.tile(points, data.shape[0])
             # A complete typed replacement avoids pandas' implicit narrowing
             # and nullable-integer assignment rules on older supported releases.
             working = frame.with_columns(nw.new_series(variable, replacements, dtype=nw.Float64,
@@ -41,14 +41,21 @@ def single_profile(predict, model, data, variable, splits, label=None):
         else:
             integer_grid = original_column.dtype.is_integer() and all(
                 _missing(value) or isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_))
-                for value in replacements)
+                for value in splits)
             if integer_grid:
-                replacements = [None if _missing(value) else int(value) for value in replacements]
+                points = [None if _missing(value) else int(value) for value in splits]
+                replacements = points * data.shape[0]
             else:
-                replacements = ([None if _missing(value) else float(value) for value in replacements]
-                                if any(_missing(value) for value in replacements) else replacements.astype(float))
+                # Normalize each grid point once, rather than rechecking the
+                # same points for every observation in the expanded batch.
+                if any(_missing(value) for value in splits):
+                    points = [None if _missing(value) else float(value) for value in splits]
+                    replacements = points * data.shape[0]
+                else:
+                    replacements = np.tile(np.asarray(splits, dtype=float), data.shape[0])
             working = set_columns(expanded, {variable: replacements})
     else:
+        replacements = np.tile(splits, data.shape[0])
         working = set_columns(expanded, {variable: replacements})
     prediction = predict(model, working)
     result = as_eager_dataframe(working).with_columns(

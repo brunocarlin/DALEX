@@ -202,8 +202,8 @@ def calculate_variable_split(data,
             # a small CP sample is explained. Keep missing filtering and range
             # reductions native; exporting/scanning Python cells made grid
             # construction dominate the entire sampled explanation.
-            observed = column.drop_nulls()
-            if dtype.is_float():
+            observed = column.drop_nulls() if column.null_count() else column
+            if dtype.is_float() and observed.is_nan().any():
                 observed = observed.filter(~observed.is_nan())
             if not len(observed):
                 # Native float validity distinguishes null from NaN. An

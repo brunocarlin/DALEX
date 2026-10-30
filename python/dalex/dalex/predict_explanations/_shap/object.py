@@ -4,7 +4,7 @@ from plotly.subplots import make_subplots
 
 from . import checks, plot, utils
 from ... import _theme, _global_checks
-from ..._explanation import Explanation
+from ..._explanation import Explanation, EmptyTable, CompatibilityTable
 
 
 class Shap(Explanation):
@@ -65,7 +65,7 @@ class Shap(Explanation):
         self.path = _path
         self.keep_distributions = keep_distributions
         self.B = B
-        self.result = pd.DataFrame()
+        self.result = EmptyTable()
         self.yhats_distributions = None
         self.prediction = None
         self.intercept = None
@@ -74,6 +74,8 @@ class Shap(Explanation):
 
     def _repr_html_(self):
         return self.result._repr_html_()
+
+    yhats_distributions = CompatibilityTable()
 
     def fit(self,
             explainer,
@@ -96,7 +98,8 @@ class Shap(Explanation):
 
         _new_observation = checks.check_new_observation(new_observation, explainer)
         checks.check_columns_in_new_observation(_new_observation, explainer)
-        self.result, self.prediction, self.intercept, self.yhats_distributions = utils.shap(
+        from .._native_contributions import shap
+        self.result, self.prediction, self.intercept, self.yhats_distributions = shap(
             explainer,
             _new_observation,
             self.path,

@@ -216,7 +216,26 @@ def column_values(data, name, *, preserve_nulls=False):
     return temporal.to_numpy()
 
 
-def observation_values(data, metadata):
+def _arrow_cell(scalar):
+    """Decode nested cells without truncating nanosecond children."""
+    arrow = get_pyarrow()
+    if not scalar.is_valid:
+        return None
+    dtype = scalar.type
+    if arrow.types.is_timestamp(dtype):
+        return pd.Timestamp(scalar.value, unit=dtype.unit, tz=dtype.tz)
+    if arrow.types.is_duration(dtype):
+        return pd.Timedelta(scalar.value, unit=dtype.unit)
+    if arrow.types.is_struct(dtype):
+        return {field.name: _arrow_cell(scalar[field.name]) for field in dtype}
+    if arrow.types.is_list(dtype) or arrow.types.is_large_list(dtype) or arrow.types.is_fixed_size_list(dtype):
+        return [_arrow_cell(value) for value in scalar.values]
+    if arrow.types.is_dictionary(dtype):
+        return _arrow_cell(scalar.value)
+    return scalar.as_py()
+
+
+def observation_values(data, metadata=None):
     """First-row feature cells, preserving native nulls before interventions.
 
     ``metadata`` is the already-created pandas display table. Its per-column
@@ -225,6 +244,18 @@ def observation_values(data, metadata):
     before using these scalars as model inputs. Result labels keep their existing
     pandas representation.
     """
+    if metadata is None:
+        if isinstance(data, pd.DataFrame):
+            return {name: data[name].iloc[0] for name in column_names(data)}
+        values = {}
+        frame = as_eager_dataframe(data)
+        for name in frame.columns:
+            column = frame.get_column(name)
+            if column.dtype.is_nested():
+                values[name] = _arrow_cell(column.to_arrow()[0])
+            else:
+                values[name] = column_values(data, name, preserve_nulls=True)[0]
+        return values
     values = {name: metadata[name].iloc[0] for name in column_names(data)}
     if not isinstance(data, pd.DataFrame):
         frame = as_eager_dataframe(data)
@@ -232,6 +263,28 @@ def observation_values(data, metadata):
             if absent:
                 values[name] = None
     return values
+
+
+def observation_display_values(data, values=None):
+    """Legacy one-row scalar formatting, without making a pandas dataframe."""
+    values = observation_values(data) if values is None else values
+    if isinstance(data, pd.DataFrame):
+        return values
+    frame = as_eager_dataframe(data)
+    display = dict(values)
+    for name, value in values.items():
+        dtype = frame.get_column(name).dtype
+        if isinstance(dtype, nw.Datetime):
+            timestamp = pd.Timestamp(value)
+            if dtype.time_zone and not pd.isna(timestamp):
+                timestamp = timestamp.tz_localize('UTC').tz_convert(dtype.time_zone)
+            display[name] = timestamp
+        elif isinstance(dtype, nw.Duration):
+            display[name] = pd.Timedelta(value)
+        elif value is None and (dtype.is_numeric() and not isinstance(dtype, nw.Decimal)
+                                or isinstance(dtype, (nw.Categorical, nw.Enum))):
+            display[name] = np.nan
+    return display
 
 
 def _temporal_counts(values, dtype):

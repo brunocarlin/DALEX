@@ -5,7 +5,7 @@ import warnings
 
 from . import checks, plot, utils
 from ... import _theme, _global_checks
-from ..._explanation import Explanation
+from ..._explanation import Explanation, EmptyTable, CompatibilityTable
 
 
 class BreakDown(Explanation):
@@ -57,11 +57,13 @@ class BreakDown(Explanation):
         self.keep_distributions = keep_distributions
         self.order = _order
         self.interaction_preference = interaction_preference
-        self.result = pd.DataFrame()
+        self.result = EmptyTable()
         self.yhats_distributions = None
 
     def _repr_html_(self):
         return self.result._repr_html_()
+
+    yhats_distributions = CompatibilityTable()
 
     def fit(self,
             explainer,
@@ -88,7 +90,8 @@ class BreakDown(Explanation):
             _new_observation = _new_observation.iloc[0, :]
 
         if self.type == 'break_down_interactions':
-            result, yhats_distributions = utils.local_interactions(
+            from .._native_contributions import break_down
+            result, yhats_distributions = break_down(
                 explainer,
                 _new_observation,
                 self.interaction_preference,
@@ -97,7 +100,8 @@ class BreakDown(Explanation):
                 self.keep_distributions
             )
         elif self.type == 'break_down':
-            result, yhats_distributions = utils.local_interactions(
+            from .._native_contributions import break_down
+            result, yhats_distributions = break_down(
                 explainer,
                 _new_observation,
                 self.interaction_preference,

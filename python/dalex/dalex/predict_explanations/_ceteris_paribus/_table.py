@@ -57,7 +57,8 @@ class ProfileTables:
         return result
 
     def _dalex_native_view(self, backend, *, partition=None, pandas_view=None):
-        if pandas_view is not None or backend == 'pandas':
+        namespace = nw.get_native_namespace(nw.from_native(self.frames[0])).__name__
+        if pandas_view is not None or backend == 'pandas' or backend == 'native' and namespace == 'pandas':
             table = pandas_view.copy() if pandas_view is not None else self._dalex_pandas_view()
             if partition is not None:
                 if partition not in self.variables:

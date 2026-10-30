@@ -189,3 +189,60 @@ def test_categorical_temporal_aggregation_does_not_merge_nanosecond_levels(fitte
             assert len(result) == 64
             assert result['_x_'].n_unique() == 64
         assert profile.plot(show=False) is not None
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'arrow'])
+@pytest.mark.parametrize('method', ['model_performance', 'model_diagnostics'])
+def test_native_performance_and_diagnostics_real_models(fitted_pipeline, backend, method, monkeypatch):
+    model, original, y, classification = fitted_pipeline
+    data = original.to_pandas() if backend == 'pandas' else original if backend == 'polars' else original.to_arrow()
+    with threadpool_limits(limits=1):
+        exp = dx.Explainer(model, data, y.copy(), model_type='classification' if classification else 'regression',
+                           label='pipeline', verbose=False, precalculate=False)
+        with native_computation_only(monkeypatch, backend):
+            result = getattr(exp, method)()
+            native = result.result_as()
+            assert isinstance(native, type(data))
+            if method == 'model_performance':
+                assert isinstance(result.result_as(table='residuals'), type(data))
+        reference = dx.Explainer(model, original.to_pandas(), y.copy(),
+                                 model_type='classification' if classification else 'regression',
+                                 label='pipeline', verbose=False, precalculate=False)
+        expected = getattr(reference, method)()
+        pd.testing.assert_frame_equal(result.result, expected.result, check_exact=False, rtol=1e-10, atol=1e-10)
+        if method == 'model_performance':
+            assert list(result.result.index) == ['pipeline']
+            pd.testing.assert_frame_equal(result.residuals, expected.residuals)
+            result.result.index = pd.Index(['renamed'])
+            assert nw.from_native(result.result_as())['label'].to_list() == ['renamed']
+        restored = pickle.loads(pickle.dumps(result))
+        pd.testing.assert_frame_equal(restored.result, result.result)
+        assert restored.plot(show=False) is not None
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'arrow'])
+@pytest.mark.parametrize('kind', ['break_down', 'break_down_interactions', 'shap'])
+def test_native_contributions_real_models_and_legacy_results(fitted_pipeline, backend, kind, monkeypatch):
+    model, original, y, classification = fitted_pipeline
+    data = original.to_pandas() if backend == 'pandas' else original if backend == 'polars' else original.to_arrow()
+    observation = data.head(1) if backend != 'arrow' else data.slice(0, 1)
+    with threadpool_limits(limits=1):
+        exp = dx.Explainer(model, data, y, model_type='classification' if classification else 'regression',
+                           label='pipeline', verbose=False, precalculate=False)
+        settings = dict(type=kind, N=20, B=3, random_state=42, keep_distributions=True)
+        with native_computation_only(monkeypatch, backend):
+            result = exp.predict_parts(observation, **settings)
+            native = result.result_as(partition='x') if kind == 'shap' else result.result_as()
+            assert isinstance(native, type(data))
+            assert isinstance(result.result_as(table='yhats_distributions'), type(data))
+            assert '_compatibility_result' not in result.__dict__ if backend != 'pandas' else True
+        reference = dx.Explainer(model, original.to_pandas(), y,
+                                 model_type='classification' if classification else 'regression',
+                                 label='pipeline', verbose=False, precalculate=False)
+        expected = reference.predict_parts(original.to_pandas().head(1), **settings)
+        pd.testing.assert_frame_equal(result.result, expected.result, check_exact=False, rtol=1e-10, atol=1e-10)
+        pd.testing.assert_frame_equal(result.yhats_distributions, expected.yhats_distributions,
+                                      check_exact=False, rtol=1e-10, atol=1e-10)
+        restored = pickle.loads(pickle.dumps(result))
+        pd.testing.assert_frame_equal(restored.result, result.result)
+        assert restored.plot(show=False) is not None

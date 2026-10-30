@@ -65,6 +65,14 @@ The following are gates, not claims that all have been completed:
   native model-to-CP-to-aggregate flows, missing groups, native exports, legacy
   result mutation, pickle, plots and nanosecond categorical levels. Guards reject
   pandas DataFrame/Series construction during native computation.
+- Performance metrics and residual diagnostics retain native result/residual
+  tables; the pandas performance index remains compatible and native metrics
+  include an explicit model label. ROC-AUC is a vector reduction with tie and
+  large-integer-score tests, rather than a pandas grouping pipeline.
+- Breakdown, interactions and DALEX Shapley use native feature edits and native
+  contribution/distribution tables. Shapley original-value metadata stays typed;
+  use a variable partition for native exports where scalar types cannot be
+  combined safely. Legacy result tables and seeded path behavior are retained.
 - Other remaining areas above are still being implemented and audited.
 
 ## External migration precedents

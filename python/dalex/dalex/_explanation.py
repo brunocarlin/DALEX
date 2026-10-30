@@ -55,7 +55,7 @@ class CompatibilityTable:
         instance.__dict__[self.name] = value
         instance.__dict__.pop('_compatibility_' + self.name, None)
 
-class Explanation(ABC):
+class ResultTables:
     result = CompatibilityTable()
 
     def result_as(self, backend='native', *, table='result', partition=None):
@@ -95,6 +95,7 @@ class Explanation(ABC):
             namespace = backend
         return export_result_frame(value, namespace.__name__ if not isinstance(namespace, str) else namespace)
 
+class Explanation(ResultTables, ABC):
     @abstractmethod
     def fit(self):
         pass
@@ -124,13 +125,18 @@ class EmptyTable:
 class IndexedTable:
     """Native result values with separate legacy pandas-index metadata."""
 
-    def __init__(self, data, index=None):
+    def __init__(self, data, index=None, index_column=None):
         self.data = data
         self.index = index
+        self.index_column = index_column
 
     def _dalex_pandas_view(self):
         from ._dataframe import to_pandas
         result = to_pandas(self.data)
+        index_column = getattr(self, 'index_column', None)
+        if index_column is not None:
+            result = result.set_index(index_column)
+            result.index.name = None
         if self.index is not None:
             result.index = self.index
         return result
@@ -143,6 +149,10 @@ class IndexedTable:
         original = nw.from_native(self.data, eager_only=True)
         namespace = nw.get_native_namespace(original)
         source = nw.from_native(pandas_view, eager_only=True) if pandas_view is not None else original
+        index_column = getattr(self, 'index_column', None)
+        if pandas_view is not None and index_column is not None:
+            source = source.with_columns(nw.new_series(index_column, pandas_view.index.to_numpy(),
+                                                       backend=nw.get_native_namespace(source)))
         if backend == 'native':
             backend = namespace.__name__
         return export_result_frame(source.to_native(), backend)

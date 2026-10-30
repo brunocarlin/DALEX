@@ -8,6 +8,9 @@
   Gaussian weighting and accumulated effects; publish legacy pandas views lazily
 * preserve nanosecond profile grids on older supported Polars and test real
   sklearn/LightGBM preprocessing integrations through exports, plots and pickle
+* compute performance/diagnostics and breakdown/Shapley tables natively while
+  retaining pandas result indexes, raw distributions and mutable legacy views
+* calculate ROC-AUC directly from vectors without rounding large integer scores
 
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON

@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+import narwhals.stable.v2 as nw
 
 from . import plot, utils
 from ... import _theme, _global_checks
-from ..._explanation import Explanation
+from ..._explanation import Explanation, EmptyTable, CompatibilityTable, IndexedTable
+from ..._dataframe import as_eager_dataframe
 
 
 class ModelPerformance(Explanation):
@@ -38,11 +40,13 @@ class ModelPerformance(Explanation):
 
         self.cutoff = cutoff
         self.model_type = model_type
-        self.result = pd.DataFrame()
+        self.result = EmptyTable()
         self.residuals = None
 
     def _repr_html_(self):
         return self.result._repr_html_()
+
+    residuals = CompatibilityTable()
 
     def fit(self, explainer):
         """Calculate the result of explanation
@@ -70,6 +74,7 @@ class ModelPerformance(Explanation):
             _residuals = explainer.residual(explainer.data, explainer.y)
 
         y_true = explainer.y
+        namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data)) if explainer.data is not None else 'pandas'
 
         if self.model_type == 'regression':
             _mse = utils.mse(y_pred, y_true)
@@ -78,14 +83,7 @@ class ModelPerformance(Explanation):
             _mae = utils.mae(y_pred, y_true)
             _mad = utils.mad(y_pred, y_true)
 
-            self.result = pd.DataFrame(
-                {
-                    'mse': [_mse],
-                    'rmse': [_rmse],
-                    'r2': [_r2],
-                    'mae': [_mae],
-                    'mad': [_mad]
-                }, index=[explainer.label])
+            metrics = {'mse': [_mse], 'rmse': [_rmse], 'r2': [_r2], 'mae': [_mae], 'mad': [_mad]}
         elif self.model_type == 'classification':
             tp = ((y_true == 1) * (y_pred >= self.cutoff)).sum()
             fp = ((y_true == 0) * (y_pred >= self.cutoff)).sum()
@@ -98,22 +96,24 @@ class ModelPerformance(Explanation):
             _accuracy = utils.accuracy(tp, fp, tn, fn)
             _auc = utils.auc(y_pred, y_true)
 
-            self.result = pd.DataFrame({
+            metrics = {
                 'recall': [_recall],
                 'precision': [_precision],
                 'f1': [_f1],
                 'accuracy': [_accuracy],
                 'auc': [_auc]
-            }, index=[explainer.label])
+            }
         else:
             raise ValueError("'model_type' must be 'regression' or 'classification'")
 
-        _residuals = pd.DataFrame({
-            'y_hat': y_pred,
-            'y': y_true,
-            'residuals': _residuals,
-            'label': explainer.label
-        })
+        metrics['label'] = [explainer.label]
+        self.result = IndexedTable(nw.from_dict(metrics, backend=namespace).to_native(), index_column='label')
+        _residuals = nw.from_dict({
+            'y_hat': np.array(y_pred, copy=True),
+            'y': np.array(y_true, copy=True),
+            'residuals': np.array(_residuals, copy=True),
+            'label': [explainer.label] * len(y_pred)
+        }, backend=namespace).to_native()
 
         self.residuals = _residuals
 

@@ -1,11 +1,13 @@
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import narwhals.stable.v2 as nw
+from narwhals.dependencies import is_pandas_dataframe
 
 from . import checks
 from ... import _theme, _global_checks, _global_utils
-from ..._explanation import Explanation
-from ..._dataframe import to_pandas
+from ..._explanation import Explanation, EmptyTable, IndexedTable
+from ..._dataframe import as_eager_dataframe, copy_for_edit
 
 
 class ResidualDiagnostics(Explanation):
@@ -33,7 +35,7 @@ class ResidualDiagnostics(Explanation):
 
         _variables = checks.check_variables(variables)
 
-        self.result = pd.DataFrame()
+        self.result = EmptyTable()
         self.variables = _variables
 
     def _repr_html_(self):
@@ -53,15 +55,19 @@ class ResidualDiagnostics(Explanation):
         -----------
         None
         """
-        result = to_pandas(explainer.data)
+        source = copy_for_edit(explainer.data)
+        result = as_eager_dataframe(source)
+        namespace = nw.get_native_namespace(result)
+        index = source.index.copy() if is_pandas_dataframe(source) else None
 
         # if variables = NULL then all variables are added
         # otherwise only selected
         if self.variables is not None:
-            result = result.loc[:, _global_utils.intersect_unsorted(self.variables, result.columns)]
+            selected = _global_utils.intersect_unsorted(self.variables, result.columns)
+            result = result.select(selected)
         # is there target
         if explainer.y is not None:
-            result = result.assign(y=explainer.y)
+            result = result.with_columns(nw.new_series('y', np.array(explainer.y, copy=True), backend=namespace))
         # are there predictions - add y_hat to the Explainer for the future
         if explainer.y_hat is None:
             explainer.y_hat = explainer.predict(explainer.data)
@@ -69,13 +75,14 @@ class ResidualDiagnostics(Explanation):
         if explainer.residuals is None:
             explainer.residuals = explainer.residual(explainer.data, explainer.y)
 
-        self.result = result.assign(
-            y_hat=explainer.y_hat,
-            residuals=explainer.residuals,
-            abs_residuals=np.abs(explainer.residuals),
-            label=explainer.label,
-            ids=np.arange(result.shape[0])+1
+        result = result.with_columns(
+            nw.new_series('y_hat', np.array(explainer.y_hat, copy=True), backend=namespace),
+            nw.new_series('residuals', np.array(explainer.residuals, copy=True), backend=namespace),
+            nw.new_series('abs_residuals', np.abs(explainer.residuals), backend=namespace),
+            nw.lit(explainer.label).alias('label'),
+            nw.new_series('ids', np.arange(len(result)) + 1, backend=namespace),
         )
+        self.result = IndexedTable(result.to_native(), index)
 
     def plot(self,
              objects=None,

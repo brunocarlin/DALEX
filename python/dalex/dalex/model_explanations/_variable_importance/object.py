@@ -4,7 +4,7 @@ from plotly.subplots import make_subplots
 
 from . import checks, plot, utils
 from ... import _theme, _global_checks
-from ..._explanation import Explanation
+from ..._explanation import Explanation, CompatibilityTable
 
 
 class VariableImportance(Explanation):
@@ -102,6 +102,8 @@ class VariableImportance(Explanation):
     def _repr_html_(self):
         return self.result._repr_html_()
 
+    permutation = CompatibilityTable()
+
     def fit(self, explainer):
         """Calculate the result of explanation
 
@@ -129,7 +131,8 @@ class VariableImportance(Explanation):
                                                                             explainer.label,
                                                                             self.processes,
                                                                             self.keep_raw_permutations,
-                                                                            self.random_state)
+                                                                            self.random_state,
+                                                                            native=True)
 
     def plot(self,
              objects=None,

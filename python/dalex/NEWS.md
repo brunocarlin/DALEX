@@ -2,6 +2,9 @@
 
 ### development
 
+* retain native importance result/permutation tables until legacy pandas access;
+  add independent result_as exports and retain writable pandas result semantics
+
 * include actual nullable observation cells in automatic profile grids, including
   observations outside an all-missing reference feature; emit valid Arena JSON
   with null display values for nonfinite numbers without changing model inputs

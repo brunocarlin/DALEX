@@ -5,8 +5,9 @@ from numpy.random import SeedSequence, default_rng
 
 import numpy as np
 import pandas as pd
+import narwhals.stable.v2 as nw
 
-from ..._dataframe import take_rows, shuffle_columns
+from ..._dataframe import take_rows, shuffle_columns, as_eager_dataframe, to_pandas
 from ..._random import get_random_state
 
 
@@ -19,42 +20,62 @@ def calculate_variable_importance(explainer,
                                   label,
                                   processes,
                                   keep_raw_permutations,
-                                  random_state):
+                                  random_state,
+                                  native=False):
     if processes == 1:
         rng = get_random_state(random_state)
         result = [None] * B
         for i in range(B):
             result[i] = loss_after_permutation(explainer.data, explainer.y, explainer.weights, explainer.model, explainer.predict_function,
-                                               loss_function, variables, N, rng)
+                                               loss_function, variables, N, rng, True)
     else:
         # Create number generator for each iteration
         ss = SeedSequence(random_state)
         generators = [default_rng(s) for s in ss.spawn(B)]
         with mp.get_context('spawn').Pool(processes) as pool:
             result = pool.starmap_async(loss_after_permutation, [
-                (explainer.data, explainer.y, explainer.weights, explainer.model, explainer.predict_function, loss_function, variables, N, generators[i]) for
+                (explainer.data, explainer.y, explainer.weights, explainer.model, explainer.predict_function, loss_function, variables, N, generators[i], True) for
                 i in range(B)]).get()
 
-    raw = pd.concat(result, sort=True)
-    result = raw.mean().sort_values().reset_index()
-    result['label'] = label
+    namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data))
+    # Match concat(sort=True)'s feature order, including tied importances.
+    names = sorted(result[0], key=lambda name: (isinstance(name, str), name))
+    portable_names = all(isinstance(name, str) for name in names)
+    fields = names if portable_names else [f'__loss_{i}' for i in range(len(names))]
+    raw = nw.from_dict({field: [record[name] for record in result]
+                        for field, name in zip(fields, names)}, backend=namespace)
+    # Express NaN normalization using the declared stable-v2 minimum as well.
+    means = raw.select([
+        nw.when(nw.col(field).cast(nw.Float64).is_nan()).then(None)
+        .otherwise(nw.col(field).cast(nw.Float64)).mean().alias(field)
+        for field in fields
+    ]).to_numpy()[0]
+    order = np.argsort(means, kind='quicksort')
+    losses = means[order]
+    full_model = means[names.index('_full_model_')]
+    with np.errstate(divide='ignore', invalid='ignore'):
+        if type == 'ratio':
+            losses = losses / full_model
+        elif type == 'difference':
+            losses = losses - full_model
+    if not portable_names:
+        # Non-string pandas column labels and arbitrary Python group names are
+        # part of the legacy API, but cannot be physical Polars/Arrow names.
+        # Keep those labels at the public compatibility boundary; the numerical
+        # aggregation above still runs through the input's Narwhals backend.
+        aggregated = pd.DataFrame({'variable': [names[i] for i in order],
+                                   'dropout_loss': losses, 'label': label})
+        permutation = pd.DataFrame({name: [record[name] for record in result] for name in names})
+        return aggregated, permutation if keep_raw_permutations else None
+    aggregated = nw.from_dict({'variable': [names[i] for i in order],
+                               'dropout_loss': losses, 'label': [label] * len(names)}, backend=namespace).to_native()
+    raw_permutations = raw.to_native() if keep_raw_permutations else None
+    if native:
+        return aggregated, raw_permutations
+    return to_pandas(aggregated), to_pandas(raw_permutations) if raw_permutations is not None else None
 
-    result = result.rename(columns={0: 'dropout_loss', 'index': 'variable'})
 
-    if type == "ratio":
-        result.loc[:, 'dropout_loss'] = result.loc[:, 'dropout_loss'] / result.loc[
-            result.variable == '_full_model_', 'dropout_loss'].values
-
-    if type == "difference":
-        result.loc[:, 'dropout_loss'] = result.loc[:, 'dropout_loss'] - result.loc[
-            result.variable == '_full_model_', 'dropout_loss'].values
-
-    raw_permutations = raw.reset_index(drop=True) if keep_raw_permutations else None
-
-    return result, raw_permutations
-
-
-def loss_after_permutation(data, y, weights, model, predict, loss_function, variables, N, rng):
+def loss_after_permutation(data, y, weights, model, predict, loss_function, variables, N, rng, as_dict=False):
     if isinstance(N, int):
         N = min(N, data.shape[0])
         sampled_rows = rng.choice(data.shape[0], N, replace=False)
@@ -84,7 +105,7 @@ def loss_after_permutation(data, y, weights, model, predict, loss_function, vari
     loss_features['_full_model_'] = loss_full
     loss_features['_baseline_'] = loss_baseline
 
-    return pd.DataFrame(loss_features, index=[0])
+    return loss_features if as_dict else pd.DataFrame(loss_features, index=[0])
 
 
 def calculate_loss(loss_function, observed, predicted, sample_weight=None):

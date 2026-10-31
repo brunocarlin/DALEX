@@ -27,6 +27,25 @@ def capture(root):
     def save(name, figure):
         figures[name] = json.loads(figure.to_json())
 
+    for family in ['partial', 'conditional', 'accumulated']:
+        profiles = [exp.model_profile(type=family, N=None, variables=['z', 'a'], grid_points=5,
+                                       random_state=42, verbose=False) for exp in exps]
+        for geom in ['aggregates', 'bars', 'profiles']:
+            for center in [False, True]:
+                save(f'profiles-{family}-{geom}-{center}', profiles[0].plot(
+                    profiles[1], geom=geom, center=center, variables=['a', 'z'], show=False))
+    grouped_data = data.assign(group=np.where(data.z > 0, 'positive', 'negative'))
+    grouped = dx.Explainer(exps[0].model, grouped_data, y, label='grouped', verbose=False,
+                            predict_function=lambda model, batch: model.predict(batch[['z', 'a', 'b']]))
+    for family in ['partial', 'conditional', 'accumulated']:
+        for categorical in [False, True]:
+            profile = grouped.model_profile(type=family, N=None,
+                variables=['group'] if categorical else ['z'],
+                variable_type='categorical' if categorical else 'numerical',
+                groups=None if categorical else ['group'], grid_points=5, random_state=42, verbose=False)
+            for center in [False, True]:
+                save(f'grouped-profiles-{family}-{categorical}-{center}', profile.plot(center=center, show=False))
+
     importance = [exp.model_parts(N=30, B=3, random_state=42) for exp in exps]
     for split in ['model', 'variable']:
         for limit in [1, 2, None]:

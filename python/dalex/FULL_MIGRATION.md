@@ -6,6 +6,14 @@ the validated implementation, benchmarks and remaining boundaries. Earlier
 reports do not certify later commits automatically. PR #587 remains draft for
 manual review.
 
+The latest verified stable pandas release is **3.1.0 (October 22, 2026)**,
+checked against the [official site](https://pandas.pydata.org/) and
+[PyPI release metadata](https://pypi.org/pypi/pandas/json) on October 30, 2026.
+There is no published pandas 4 release. The `<4` dependency bound is a
+precautionary future-major cap, not a demonstrated incompatibility or a missing
+testable release. Existing development-build tests use pandas 3.2, not pandas 4.
+The bound remains a packaging policy choice for maintainer review.
+
 ## Compatibility contract
 
 - Existing pandas inputs, default return types, column labels, indexes, plotting
@@ -136,10 +144,15 @@ The review report records the evidence for these criteria and its exact scope:
 
 ## Work remaining before claiming a full internal transition
 
-- CP/aggregated-profile, Aspect/triplot and fairness plotting still contain
+- CP, Aspect/triplot and fairness plotting still contain
   pandas preparation. These are unfinished migration work, not a requirement of
   the public pandas API. Typed partitions, group display labels, observation
   indexes and edited public views must remain compatible when moving them.
+- Aggregated-profile line/bar preparation now uses native tables, including
+  legacy group captions and edited pandas views. Its `geom='profiles'` overlay
+  still delegates to the pandas-prepared CP plot. Combining incompatible native
+  partition scalar types remains a precision boundary; it must not silently
+  round large integer axes to float.
 - Older private pandas algorithms remain alongside native implementations.
   Replace them with compatibility adapters and consolidate shared computation,
   rather than maintaining independent algorithms indefinitely.

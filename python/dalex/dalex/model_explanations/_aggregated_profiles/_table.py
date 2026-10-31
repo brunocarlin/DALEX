@@ -18,6 +18,58 @@ class AggregatedPartitions:
         self.frames = [nw.from_native(frame, eager_only=True).with_columns(nw.lit(value).alias(name)).to_native()
                        for frame in self.frames]
 
+    def _dalex_plot_data(self):
+        """Prepare display columns without publishing the pandas result view."""
+        from ..._plotting import concat_frames
+        pieces = []
+        for data in self.frames:
+            frame = nw.from_native(data, eager_only=True)
+            namespace = nw.get_native_namespace(frame)
+            if self.groups:
+                columns = []
+                numeric = []
+                for name in self.groups:
+                    series = frame[name]
+                    dtype = self.group_dtypes.get(name)
+                    values = series.to_list()
+                    # Match the legacy table's scalar display, including its
+                    # row-wise numeric promotion and missing group spellings.
+                    if namespace.__name__ == 'pandas':
+                        values = list(frame.to_native()[name].astype(dtype).array) if dtype is not None else values
+                        if dtype == 'object':
+                            values = [np.nan if missing else value for value, missing in zip(values, series.is_null().to_list())]
+                    elif dtype == 'object':
+                        values = [np.nan if value is None else value for value in values]
+                    elif series.dtype.is_integer() and series.null_count():
+                        values = [np.nan if value is None else float(value) for value in values]
+                    elif series.dtype.is_float() and not (series.null_count() and series.is_nan().any()):
+                        values = [np.nan if value is None else value for value in values]
+                    columns.append(values)
+                    numeric.append(dtype != 'object' and series.dtype.is_numeric())
+                if all(numeric):
+                    rows = np.asarray(columns).T
+                else:
+                    rows = zip(*columns)
+                labels = ['_'.join(map(str, row)) for row in rows]
+                model_labels = [str(label) + '_' + group for label, group in zip(frame['_label_'].to_list(), labels)]
+                frame = frame.drop(self.groups).with_columns(
+                    nw.new_series('_groups_', labels, backend=namespace),
+                    nw.new_series('_label_', model_labels, backend=namespace))
+            if self.numerical and not _large_integer(frame, '_x_') and '_x_kind_' not in frame.columns:
+                frame = frame.with_columns(nw.col('_x_').cast(nw.Float64))
+            if '_x_kind_' in frame.columns:
+                frame = frame.drop('_x_kind_')
+            pieces.append(frame)
+        return concat_frames(pieces).to_native()
+
+    def _dalex_plot_x_is_numeric(self):
+        # The legacy projection uses object storage for exact large integers
+        # and distinct null/NaN keys; preserve its bar-plot selection.
+        return self.numerical and not any(
+            _large_integer(frame, '_x_') or
+            ('_x_kind_' in frame.columns and 'null' in frame['_x_kind_'].to_list())
+            for frame in (nw.from_native(data) for data in self.frames))
+
     def _dalex_pandas_view(self):
         import pandas as pd
         pieces = []

@@ -68,7 +68,9 @@ def worker(args):
             'conversion_seconds': converted - start, 'initialization_seconds': initialized - converted,
             'explanation_seconds': finished - initialized, 'rss_baseline_mib': rss.baseline / 2**20,
             'rss_peak_mib': rss.peak / 2**20, 'rss_increase_mib': (rss.peak - rss.baseline) / 2**20,
-            'outcome': {'columns': list(numeric.columns), 'values': numeric.to_numpy(dtype=float).tolist()},
+            'outcome': {'columns': list(numeric.columns), 'values': numeric.to_numpy(dtype=float).tolist(),
+                        'metadata': json.loads(result.select_dtypes(exclude=np.number).to_json(
+                            orient='split', date_format='iso', double_precision=15))},
             'source': source_identity(dx), 'fitted_model_sha256': hashlib.sha256(model_bytes).hexdigest(),
             'data_sha256': hashlib.sha256(values.tobytes() + target.tobytes()).hexdigest(),
             'polars_thread_pool_size': pl.thread_pool_size(), 'model_and_blas_threads': 1,
@@ -160,6 +162,7 @@ def main():
                     if expected is None:
                         expected = outcome
                     assert outcome['columns'] == expected['columns']
+                    assert outcome['metadata'] == expected['metadata'], 'Result labels/index differ across sources or backends'
                     left, right = np.asarray(outcome['values']), np.asarray(expected['values'])
                     np.testing.assert_allclose(left, right, rtol=1e-10, atol=1e-10, equal_nan=True)
                     error = max(error, float(np.nanmax(np.abs(left - right))))

@@ -5,6 +5,10 @@ from narwhals.dependencies import is_pandas_dataframe
 
 def export_result_frame(data, backend):
     """Export typed values without a Python-scalar datetime/nullable round-trip."""
+    if is_pandas_dataframe(data) and not data.columns.is_unique:
+        if backend in ('native', 'pandas'):
+            return data.copy(deep=True)
+        raise ValueError('Duplicate pandas column labels cannot be exported to this backend; rename the result columns first')
     frame = nw.from_native(data, eager_only=True)
     namespace = nw.get_native_namespace(frame)
     if backend == 'native' or namespace.__name__ == backend:
@@ -80,6 +84,10 @@ class ResultTables:
             return original._dalex_native_view(backend, partition=partition, pandas_view=cached)
         if partition is not None:
             raise ValueError('This result table has no partitions')
+        if is_pandas_dataframe(value) and not value.columns.is_unique:
+            if backend == 'native' and not is_pandas_dataframe(original):
+                backend = nw.get_native_namespace(nw.from_native(original, eager_only=True)).__name__
+            return export_result_frame(value, backend)
         try:
             frame = nw.from_native(value, eager_only=True)
         except TypeError:
@@ -183,3 +191,44 @@ class IndexedTable:
         if backend == 'native':
             backend = namespace.__name__
         return export_result_frame(source.to_native(), backend)
+
+
+class PandasFeatureTable:
+    """Publish legacy duplicate-label features beside native diagnostic vectors.
+
+    Narwhals requires unique physical column names. Original pandas features
+    are a compatibility snapshot, not a second statistical implementation.
+    """
+
+    def __init__(self, features, values, scalar_columns=None):
+        self.features = features
+        self.values = values
+        self.scalar_columns = scalar_columns or {}
+
+    def _dalex_set_column(self, name, value):
+        frame = nw.from_native(self.values, eager_only=True)
+        self.values = frame.with_columns(nw.lit(value).alias(name)).to_native()
+        self.scalar_columns[name] = value
+
+    def _dalex_pandas_view(self):
+        from pandas import MultiIndex
+        frame = nw.from_native(self.values, eager_only=True)
+        assignments = {name: frame[name].to_numpy().copy() for name in frame.columns}
+        assignments.update(self.scalar_columns)
+        # This explicit publication retains pandas' duplicate/partial-MultiIndex
+        # assignment, column order, original row index and extension dtypes.
+        result = self.features.copy(deep=True)
+        for name, value in assignments.items():
+            key = name
+            if isinstance(result.columns, MultiIndex) and name not in result.columns:
+                # Preserve the old padded-label layout without pandas 3's
+                # deprecated partial key for adding a new MultiIndex column.
+                key = (name,) + ('',) * (result.columns.nlevels - 1)
+            result[key] = value
+        return result
+
+    def _dalex_native_view(self, backend, *, partition=None, pandas_view=None):
+        if partition is not None:
+            raise ValueError('This result table has no partitions')
+        result = pandas_view if pandas_view is not None else self._dalex_pandas_view()
+        return export_result_frame(result, backend)

@@ -86,6 +86,13 @@ def column_names(data):
     return as_eager_dataframe(data).columns
 
 
+def native_namespace(data):
+    """Identify storage without validating pandas' legacy column-label layout."""
+    if isinstance(data, pd.DataFrame):
+        return pd
+    return nw.get_native_namespace(as_eager_dataframe(data))
+
+
 def iter_column_arrays(data, numeric_only=False):
     """Inspect features without materializing a full mixed/structured matrix."""
     if isinstance(data, pd.DataFrame):
@@ -139,6 +146,16 @@ def shuffle_columns(data, columns, positions):
         raise ValueError("permutation must have the same length as data")
     index = _row_positions(positions, data.shape[0])
     if isinstance(data, pd.DataFrame):
+        if not data.columns.is_unique:
+            # Duplicate pandas labels select every matching physical column.
+            # Resolve positions once, then assign each array independently:
+            # result[name] and other[name] would select a whole subframe.
+            selected = pd.Series(np.arange(data.shape[1]), index=data.columns).loc[columns]
+            selected = selected.to_numpy() if isinstance(selected, pd.Series) else np.asarray([selected])
+            result = data.copy()
+            for position in selected:
+                result.isetitem(int(position), data.iloc[index, int(position)].array)
+            return result
         multilevel = isinstance(data.columns, pd.MultiIndex)
         if multilevel:
             # A tuple can be one complete feature label or a partial level

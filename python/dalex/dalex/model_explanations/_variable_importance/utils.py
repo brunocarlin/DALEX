@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import narwhals.stable.v2 as nw
 
-from ..._dataframe import take_rows, shuffle_columns, as_eager_dataframe, to_pandas
+from ..._dataframe import take_rows, shuffle_columns, native_namespace, to_pandas
 from ..._random import get_random_state
 
 
@@ -37,7 +37,7 @@ def calculate_variable_importance(explainer,
                 (explainer.data, explainer.y, explainer.weights, explainer.model, explainer.predict_function, loss_function, variables, N, generators[i], True) for
                 i in range(B)]).get()
 
-    namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data))
+    namespace = native_namespace(explainer.data)
     # Match concat(sort=True)'s feature order, including tied importances.
     portable_names = all(isinstance(name, str) for name in result[0])
     if portable_names:

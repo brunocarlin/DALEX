@@ -5,7 +5,7 @@ from narwhals.dependencies import is_pandas_dataframe
 
 from . import checks
 from ... import _theme, _global_checks, _global_utils
-from ..._explanation import Explanation, EmptyTable, IndexedTable
+from ..._explanation import Explanation, EmptyTable, IndexedTable, PandasFeatureTable
 from ..._dataframe import as_eager_dataframe, copy_for_edit
 from ..._plotting import result_frame, concat_frames
 
@@ -56,13 +56,23 @@ class ResidualDiagnostics(Explanation):
         None
         """
         source = copy_for_edit(explainer.data)
-        result = as_eager_dataframe(source)
+        legacy_features = None
+        if is_pandas_dataframe(source) and not source.columns.is_unique:
+            # Keep duplicate labels at the input/publication boundary while
+            # computing the diagnostic columns through the shared native path.
+            if self.variables is not None:
+                selected = _global_utils.intersect_unsorted(self.variables, source.columns)
+                source = source.loc[:, selected]
+            legacy_features = source
+            result = nw.from_dict({'__dalex_row__': np.arange(len(source))}, backend='pandas')
+        else:
+            result = as_eager_dataframe(source)
         namespace = nw.get_native_namespace(result)
         index = source.index.copy() if is_pandas_dataframe(source) else None
 
         # if variables = NULL then all variables are added
         # otherwise only selected
-        if self.variables is not None:
+        if self.variables is not None and legacy_features is None:
             selected = _global_utils.intersect_unsorted(self.variables, result.columns)
             result = result.select(selected)
         # is there target
@@ -82,7 +92,11 @@ class ResidualDiagnostics(Explanation):
             nw.lit(explainer.label).alias('label'),
             nw.new_series('ids', np.arange(len(result)) + 1, backend=namespace),
         )
-        self.result = IndexedTable(result.to_native(), index)
+        if legacy_features is not None:
+            self.result = PandasFeatureTable(legacy_features, result.drop('__dalex_row__').to_native(),
+                                            scalar_columns={'label': explainer.label})
+        else:
+            self.result = IndexedTable(result.to_native(), index)
 
     def plot(self,
              objects=None,

@@ -4,7 +4,7 @@ import narwhals.stable.v2 as nw
 from . import plot, utils
 from ... import _theme, _global_checks
 from ..._explanation import Explanation, EmptyTable, CompatibilityTable, IndexedTable
-from ..._dataframe import as_eager_dataframe
+from ..._dataframe import native_namespace
 from ..._plotting import result_frame
 
 
@@ -74,7 +74,7 @@ class ModelPerformance(Explanation):
             _residuals = explainer.residual(explainer.data, explainer.y)
 
         y_true = explainer.y
-        namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data)) if explainer.data is not None else 'pandas'
+        namespace = native_namespace(explainer.data) if explainer.data is not None else 'pandas'
 
         if self.model_type == 'regression':
             _mse = utils.mse(y_pred, y_true)

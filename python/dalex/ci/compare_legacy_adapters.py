@@ -112,6 +112,30 @@ def capture(root, labels_only=False):
         for kind in ['partial', 'conditional', 'accumulated']:
             save(f'labels-{case}-{kind}', labeled.model_profile(type=kind, variables=[labels[0]],
                 N=16, grid_points=3, random_state=42, verbose=False).result)
+    # Narwhals forbids duplicate physical names, but these three pandas APIs
+    # worked upstream. Compare their actual outputs rather than introducing a
+    # new global uniqueness requirement for original pandas features.
+    duplicates = [
+        ('strings', ['x', 'x', 'z']), ('integers', [10, 10, 20]),
+        ('missing', [None, None, 'z']), ('reserved', ['y_hat', 'y_hat', 'label']),
+        ('multiindex', pd.MultiIndex.from_tuples([('g', 1), ('g', 1), ('h', 1)])),
+        ('reserved-multiindex', pd.MultiIndex.from_tuples([('y_hat', 1), ('y_hat', 1), ('label', 1)])),
+    ]
+    for case, names in duplicates:
+        frame = data.copy()
+        frame.columns = names
+        labeled = dx.Explainer(model, frame, y, predict_function=indexed_predict,
+            residual_function=indexed_residual, label='labeled', verbose=False)
+        for kind in ['variable_importance', 'ratio', 'difference']:
+            value = labeled.model_parts(type=kind, N=16, B=3, random_state=42)
+            save(f'labels-duplicate-{case}-{kind}', (value.result, value.permutation))
+        save(f'labels-duplicate-{case}-performance', labeled.model_performance().result)
+        for selection in [None, [frame.columns[0]], [frame.columns[2]]]:
+            save(f'labels-duplicate-{case}-diagnostics-{selection}',
+                 labeled.model_diagnostics(variables=selection).result)
+        if case == 'strings':
+            value = labeled.model_parts(N=16, B=3, random_state=42, processes=2)
+            save('labels-duplicate-processes', (value.result, value.permutation))
     if labels_only:
         return result
     for loss in [float32_loss, mixed_precision_loss, float32_missing_loss]:

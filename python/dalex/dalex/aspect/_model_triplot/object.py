@@ -1,3 +1,4 @@
+from .._plotting import plot_data
 import numpy as np
 import pandas as pd
 from copy import deepcopy
@@ -172,7 +173,7 @@ class ModelTriplot(Explanation):
             updated_dendro_traces,
         ) = plot.plot_model_hierarchical_importance(
             hierarchical_clustering_dendrogram_plot_without_annotations,
-            self.result,
+            plot_data(self),
             rounding_function,
             digits,
             show_change
@@ -196,7 +197,7 @@ class ModelTriplot(Explanation):
 
         ## left plot
         fig = plot.plot_single_aspects_importance(
-            self.single_variable_importance,
+            plot_data(self, 'single_variable_importance'),
             variables_order,
             rounding_function,
             digits,

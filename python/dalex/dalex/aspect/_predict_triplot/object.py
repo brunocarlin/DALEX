@@ -1,3 +1,4 @@
+from .._plotting import plot_data
 import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
@@ -198,7 +199,7 @@ class PredictTriplot(Explanation):
             updated_dendro_traces,
         ) = plot.plot_predict_hierarchical_importance(
             hierarchical_clustering_dendrogram_plot_without_annotations,
-            self.result,
+            plot_data(self),
             rounding_function,
             digits,
             absolute_value,
@@ -223,7 +224,7 @@ class PredictTriplot(Explanation):
 
         ## left plot
         fig = plot.plot_single_aspects_importance(
-            self.single_variable_importance,
+            plot_data(self, 'single_variable_importance'),
             variables_order,
             rounding_function,
             digits,
@@ -272,7 +273,7 @@ class PredictTriplot(Explanation):
 
         plot_height = 78 + 71 + m * bar_width + (m + 1) * bar_width / 4
         ticktext = plot.get_ticktext_for_plot(
-            self.single_variable_importance, variables_order, abbrev_labels
+            plot_data(self, 'single_variable_importance'), variables_order, abbrev_labels
         )
 
         fig.update_layout(

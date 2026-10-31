@@ -1,3 +1,4 @@
+from .._plotting import plot_data
 import numpy as np
 import pandas as pd
 from plotly.subplots import make_subplots
@@ -184,7 +185,8 @@ class PredictAspectImportance(Explanation):
                                                  self.corr_method, self.agg_method)
         frame = nw.from_native(data, eager_only=True)
         frame = frame.with_columns(nw.new_series('min_depend', minima, backend=nw.get_native_namespace(frame)))
-        self.result = AspectTable(frame.to_native(), names, pairs, copy_for_edit(_new_observation),
+        observation_snapshot = nw.from_native(copy_for_edit(_new_observation), eager_only=True).clone().to_native()
+        self.result = AspectTable(frame.to_native(), names, pairs, observation_snapshot,
                                   value_lists=value_lists)
 
 
@@ -243,26 +245,28 @@ class PredictAspectImportance(Explanation):
             Return figure that can be edited or saved. See `show` parameter.
         """
 
-        _result_list = [self.result.copy()]
+        if not isinstance(max_aspects, (int, np.integer)) or max_aspects < 1:
+            raise ValueError('max_aspects must be a positive integer')
+        _result_list = [plot_data(self)]
         _intercept_list = [self.intercept]
         # are there any other objects to plot?
         if objects is None:
             n = 1
         elif isinstance(objects, self.__class__):
             n = 2
-            _result_list += [objects.result.copy()]
+            _result_list += [plot_data(objects)]
             _intercept_list += [objects.intercept]
         elif isinstance(objects, (list, tuple)):
             n = len(objects) + 1
             for ob in objects:
                 _global_checks.global_check_object_class(ob, self.__class__)
-                _result_list += [ob.result.copy()]
+                _result_list += [plot_data(ob)]
                 _intercept_list += [ob.intercept]
         else:
             _global_checks.global_raise_objects_class(objects, self.__class__)
 
         model_names = [
-            result.iloc[0, result.columns.get_loc("label")] for result in _result_list
+            result.frame['label'][0] for result in _result_list
         ]
 
         if vertical_spacing is None:
@@ -289,8 +293,8 @@ class PredictAspectImportance(Explanation):
             temp_min_max = min_max
 
         for i, _result in enumerate(_result_list):
-            if _result.shape[0] <= max_aspects:
-                m = _result.shape[0]
+            if len(_result.frame) <= max_aspects:
+                m = len(_result.frame)
             else:
                 m = max_aspects + 1
 
@@ -300,19 +304,12 @@ class PredictAspectImportance(Explanation):
                 else: 
                     baseline = 0 
             
-            _result = _result.iloc[:max_aspects, :]
-            _result.loc[:, "importance"] = rounding_function(
-                _result.loc[:, "importance"], digits
-            )
-
-            _result["color"] = [0 if imp > 0 else 1 for imp in _result["importance"]]
-            _result["tooltip_text"] = _result.apply(
-                lambda row: plot.tooltip_text(row, rounding_function, digits, self.type),
-                axis=1,
-            )
-            _result["label_text"] = _global_utils.convert_float_to_str(
-                _result.importance, "+"
-            )
+            _data = _result.take(range(min(max_aspects, len(_result.frame)))).rounded('importance', rounding_function, digits)
+            _rows = _data.rows()
+            _result = _data.frame
+            colors = [0 if value > 0 else 1 for value in _result['importance'].to_list()]
+            tooltip = [plot.tooltip_text(row, rounding_function, digits, self.type) for row in _rows]
+            labels = _global_utils.convert_float_to_str(_result['importance'].to_numpy(), '+')
 
             fig.add_shape(
                 type="line",
@@ -331,16 +328,16 @@ class PredictAspectImportance(Explanation):
                 orientation="h",
                 y=[
                     ", ".join(variables_list)
-                    for variables_list in _result["variable_names"]
+                    for variables_list in [row['variable_names'] for row in _rows]
                 ]
                 if show_variable_names
-                else _result["aspect_name"].tolist(),
-                x=_result["importance"].tolist(),
+                else _result["aspect_name"].to_list(),
+                x=_result["importance"].to_list(),
                 textposition="outside",
-                text=_result["label_text"].tolist(),
-                marker_color=[vcolors[int(c)] for c in _result["color"].tolist()],
+                text=labels,
+                marker_color=[vcolors[int(c)] for c in colors],
                 base=baseline,
-                hovertext=_result["tooltip_text"].tolist(),
+                hovertext=tooltip,
                 hoverinfo="text",
                 hoverlabel={"bgcolor": "rgba(0,0,0,0.8)"},
                 showlegend=False,
@@ -381,7 +378,7 @@ class PredictAspectImportance(Explanation):
             plot_height += m * bar_width + (m + 1) * bar_width / 4
 
             if min_max is None:
-                cum = _result.importance.values + baseline
+                cum = _result['importance'].to_numpy() + baseline
                 min_max_margin =  np.ptp(cum) * 0.15 
                 temp_min_max[0] = np.min(
                     [

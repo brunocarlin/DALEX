@@ -11,6 +11,43 @@ import subprocess
 import sys
 
 
+def canonical_triplot(figure):
+    """Remove only redundant, unlabelled points on monotone straight segments.
+
+    Upstream asks a browser to resolve autorange padding before adding hover
+    samples. DALEX now uses explicit finite spans. Segment geometry, labelled
+    points and every other figure field must still match independently.
+    """
+    import base64
+    from copy import deepcopy
+    import numpy as np
+    figure = deepcopy(figure)
+
+    def array(value):
+        if isinstance(value, dict) and 'bdata' in value:
+            return np.frombuffer(base64.b64decode(value['bdata']), dtype=value['dtype'])
+        return np.asarray(value)
+
+    for trace in figure['data'][1:]:
+        x, y = array(trace['x']), array(trace['y'])
+        text = trace.get('text', [None] * len(x))
+        assert len(x) == len(y) == len(text)
+        keep = [0]
+        for index in range(1, len(x) - 1):
+            before, after = index - 1, index + 1
+            vertical = x[before] == x[index] == x[after]
+            horizontal = y[before] == y[index] == y[after]
+            monotone = ((x[index] - x[before]) * (x[after] - x[index]) >= 0 and
+                        (y[index] - y[before]) * (y[after] - y[index]) >= 0)
+            if text[index] is not None or not (monotone and (vertical or horizontal)):
+                keep.append(index)
+        keep.append(len(x) - 1)
+        trace['x'], trace['y'] = x[keep].tolist(), y[keep].tolist()
+        if 'text' in trace:
+            trace['text'] = [text[index] for index in keep]
+    return figure
+
+
 def capture(root):
     sys.path.insert(0, str(Path(root).resolve()))
     import numpy as np
@@ -19,6 +56,13 @@ def capture(root):
     from copy import deepcopy
     from dalex.fairness import GroupFairnessClassification, GroupFairnessRegression
     from sklearn.linear_model import LinearRegression
+    # Untouched upstream still uses the removed spelling on 1-D feature lists.
+    # This runtime shim changes no dataframe or explanation implementation.
+    if not hasattr(np, 'in1d'):
+        def in1d(array, values, *args, **kwargs):
+            assert np.asarray(array).ndim == 1
+            return np.isin(array, values, *args, **kwargs)
+        np.in1d = in1d
 
     rng = np.random.default_rng(391)
     data = pd.DataFrame(rng.normal(size=(40, 3)), columns=['z', 'a', 'b'], index=np.arange(40) * 3 + 7)
@@ -137,6 +181,27 @@ def capture(root):
             options = {} if kind == 'density' else {'verbose': False}
             save(f'regression-fairness-{multiple}-{kind}', fairness[0].plot(fairness[1] if multiple else None,
                                                                           type=kind, show=False, **options))
+    aspects = [dx.Aspect(exp) for exp in exps]
+    groups = {'za': ['z', 'a'], 'b': ['b']}
+    model_parts = [aspect.model_parts(variable_groups=groups, N=30, B=3, random_state=42) for aspect in aspects]
+    for split in ['model', 'aspect']:
+        for limit in [1, None]:
+            save(f'aspect-model-{split}-{limit}', model_parts[0].plot(model_parts[1], split=split,
+                                                                     max_aspects=limit, show=False))
+    for kind in ['default', 'shap']:
+        parts = [aspect.predict_parts(data.iloc[[3]], variable_groups=groups, type=kind,
+                                       N=30, B=3, random_state=42) for aspect in aspects]
+        for limit in [1, 10]:
+            for baseline in [None, 0., 1.5]:
+                save(f'aspect-predict-{kind}-{limit}-{baseline}', parts[0].plot(parts[1],
+                    max_aspects=limit, baseline=baseline, show=False))
+        triplot = aspects[0].predict_triplot(data.iloc[[3]], type=kind, N=30, B=3, random_state=42)
+        for absolute in [False, True]:
+            save(f'aspect-predict-triplot-{kind}-{absolute}', triplot.plot(
+                absolute_value=absolute, widget=False, show=False))
+    triplot = aspects[0].model_triplot(N=30, B=3, random_state=42)
+    for change in [False, True]:
+        save(f'aspect-model-triplot-{change}', triplot.plot(show_change=change, widget=False, show=False))
     return figures
 
 
@@ -165,13 +230,19 @@ def main():
     assert a.keys() == b.keys()
     for name in a:
         try:
-            compare_figures(a[name], b[name])
+            if name.startswith(('aspect-predict-triplot-', 'aspect-model-triplot-')):
+                compare_figures(canonical_triplot(a[name]), canonical_triplot(b[name]))
+            else:
+                compare_figures(a[name], b[name])
         except AssertionError as error:
             raise AssertionError(f'Figure mismatch: {name}') from error
     report = {'passed': True, 'figure_count': len(a), 'figures': list(a),
               'reference_root': str(roots[0][1]), 'current_source': source_identity(dx),
               'tolerance': {'rtol': 1e-12, 'atol': 1e-12},
-              'scope': 'all figure fields, including numeric traces, labels, hover text and layout'}
+              'scope': 'all figure fields; six triplots normalize redundant unlabelled collinear hover samples',
+              'triplot_hover_density_exception': [name for name in a if name.startswith(
+                  ('aspect-predict-triplot-', 'aspect-model-triplot-'))],
+              'reference_runtime_shim': 'numpy.in1d uses numpy.isin for one-dimensional feature lists when absent'}
     output.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))
 

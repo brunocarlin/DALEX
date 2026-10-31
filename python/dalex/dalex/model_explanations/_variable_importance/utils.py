@@ -39,11 +39,42 @@ def calculate_variable_importance(explainer,
 
     namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data))
     # Match concat(sort=True)'s feature order, including tied importances.
-    names = sorted(result[0], key=lambda name: (isinstance(name, str), name))
-    portable_names = all(isinstance(name, str) for name in names)
+    portable_names = all(isinstance(name, str) for name in result[0])
+    if portable_names:
+        names = sorted(result[0])
+    else:
+        # Arbitrary Python/pandas labels have no common native ordering.
+        # Resolve only this small metadata index with the exact historical
+        # concat(sort=True) contract; loss reductions remain native below.
+        labels = pd.Index(list(result[0]), dtype=object, tupleize_cols=False)
+        if isinstance(labels[0], tuple):
+            try:
+                # Pandas' historical mixed-tuple sort treats strings as
+                # sequences too. Pad those metadata sequences explicitly to
+                # avoid deprecated ragged-frame construction in pandas 3.
+                rows = [list(name) for name in labels]
+                width = max(map(len, rows))
+                metadata = pd.DataFrame([row + [None] * (width - len(row)) for row in rows])
+                names = [labels[i] for i in metadata.sort_values(list(metadata.columns)).index]
+            except TypeError:
+                # Unorderable Python keys retain their original order, as
+                # pandas' safe concat sort does for this compatibility case.
+                names = labels.tolist()
+        else:
+            names = pd.concat([pd.DataFrame(columns=labels)], sort=True).columns.tolist()
     fields = names if portable_names else [f'__loss_{i}' for i in range(len(names))]
-    raw = nw.from_dict({field: [record[name] for record in result]
-                        for field, name in zip(fields, names)}, backend=namespace)
+    if portable_names:
+        loss_columns = {name: [record[name] for record in result] for name in names}
+    else:
+        # Missing labels are valid pandas metadata, but NaN is not reflexively
+        # equal to itself and index normalization can produce a different NaN
+        # object. Resolve positions once instead of looking up reconstructed
+        # Python keys in each record.
+        positions = labels.get_indexer(names)
+        records = [list(record.values()) for record in result]
+        loss_columns = {field: [record[position] for record in records]
+                        for field, position in zip(fields, positions)}
+    raw = nw.from_dict(loss_columns, backend=namespace)
     clean_float = (all(dtype == nw.Float64 for dtype in raw.schema.values()) and
                    all(isinstance(value, (float, np.floating)) and not np.isnan(value)
                        for record in result for value in record.values()))
@@ -61,7 +92,7 @@ def calculate_variable_importance(explainer,
         ]).to_numpy()[0]
     order = np.argsort(means, kind='quicksort')
     losses = means[order]
-    full_model = means[names.index('_full_model_')]
+    full_model = means[next(i for i, name in enumerate(names) if isinstance(name, str) and name == '_full_model_')]
     with np.errstate(divide='ignore', invalid='ignore'):
         if type == 'ratio':
             losses = losses / full_model
@@ -74,7 +105,7 @@ def calculate_variable_importance(explainer,
         # aggregation above still runs through the input's Narwhals backend.
         aggregated = pd.DataFrame({'variable': [names[i] for i in order],
                                    'dropout_loss': losses, 'label': label})
-        permutation = pd.DataFrame({name: [record[name] for record in result] for name in names})
+        permutation = pd.DataFrame({name: loss_columns[field] for name, field in zip(names, fields)})
         return aggregated, permutation if keep_raw_permutations else None
     aggregated = nw.from_dict({'variable': [names[i] for i in order],
                                'dropout_loss': losses, 'label': [label] * len(names)}, backend=namespace).to_native()

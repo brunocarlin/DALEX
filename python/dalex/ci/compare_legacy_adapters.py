@@ -22,7 +22,11 @@ def residual(model, frame, target):
     return target - model.predict(frame)
 
 
-def capture(root):
+def indexed_residual(model, frame, target):
+    return target - indexed_predict(model, frame)
+
+
+def capture(root, labels_only=False):
     sys.path.insert(0, str(Path(root).resolve()))
     import numpy as np
     import pandas as pd
@@ -52,6 +56,45 @@ def capture(root):
                 save(f'{name}/{index}', item)
         else:
             result[name] = value
+
+    # Non-string physical pandas labels and partial MultiIndex selectors are
+    # real legacy workflows. Native engines cannot use them as physical column
+    # names, so their small publication/label-order boundary stays explicit.
+    multi = data.copy()
+    multi.columns = pd.MultiIndex.from_tuples([('g', 1), ('g', 2), ('h', 1)], names=['group', 'feature'])
+    integer = data.copy()
+    integer.columns = [10, 20, 30]
+    missing_label = data.copy()
+    missing_label.columns = pd.Index([None, 'a', 'b'], dtype=object)
+    heterogeneous = {pd.Timestamp('2020-01-01'): 'z', 7: 'a', None: 'b'}
+    labeled_cases = [('multiindex', multi, None), ('multiindex-prefix', multi, ['g']),
+                     ('integer', integer, None), ('none-label', missing_label, None),
+                     ('python-group-labels', data, heterogeneous)]
+    for case, label in [('nan-label', np.nan), ('na-label', pd.NA), ('nat-label', pd.NaT)]:
+        frame = data.copy()
+        frame.columns = pd.Index([label, 'a', 'b'], dtype=object)
+        labeled_cases.append((case, frame, None))
+    for case, frame, variables in labeled_cases:
+        labeled = dx.Explainer(model, frame, y, predict_function=indexed_predict,
+            residual_function=indexed_residual, label='labeled', verbose=False)
+        for kind in ['variable_importance', 'ratio', 'difference']:
+            options = ({'variable_groups': {name: [feature] for name, feature in variables.items()}}
+                       if isinstance(variables, dict) else {'variables': variables})
+            value = labeled.model_parts(**options, type=kind, N=16, B=3, random_state=42)
+            save(f'labels-{case}-{kind}', (value.result, value.permutation))
+    for case, labels in [('integer', [10, 20, 30]), ('mixed', ['x', 20, ('q', 1)]),
+                          ('empty-string', ['', 'x', 'z'])]:
+        frame = data.copy()
+        frame.columns = labels
+        labeled = dx.Explainer(model, frame, y, predict_function=indexed_predict,
+            residual_function=indexed_residual, label='labeled', verbose=False)
+        save(f'labels-{case}-cp', labeled.predict_profile(frame.head(1), variables=[labels[0]],
+            grid_points=3, verbose=False).result)
+        for kind in ['partial', 'conditional', 'accumulated']:
+            save(f'labels-{case}-{kind}', labeled.model_profile(type=kind, variables=[labels[0]],
+                N=16, grid_points=3, random_state=42, verbose=False).result)
+    if labels_only:
+        return result
 
     mixed = data.assign(cat1=['low', 'high'] * 16, cat2=['yes', 'no', 'no', 'yes'] * 8)
     save('categorical-association', dependence.calculate_cat_assoc_matrix(mixed, ['cat2', 'cat1'], len(mixed)))
@@ -160,16 +203,21 @@ def main():
     parser.add_argument('--capture-root')
     parser.add_argument('--reference-root')
     parser.add_argument('--output', required=True)
+    parser.add_argument('--labels-only', action='store_true',
+                        help='Isolate label contracts from unrelated legacy dependency failures')
     args = parser.parse_args()
     output = Path(args.output).resolve()
     if args.capture_root:
-        output.write_bytes(pickle.dumps(capture(args.capture_root)))
+        output.write_bytes(pickle.dumps(capture(args.capture_root, labels_only=args.labels_only)))
         return
     roots = [('reference', Path(args.reference_root).resolve()), ('current', Path(__file__).resolve().parents[1])]
     captures = []
     for name, root in roots:
         path = output.with_suffix(f'.{name}.pkl')
-        subprocess.run([sys.executable, __file__, '--capture-root', str(root), '--output', str(path)], check=True,
+        command = [sys.executable, __file__, '--capture-root', str(root), '--output', str(path)]
+        if args.labels_only:
+            command.append('--labels-only')
+        subprocess.run(command, check=True,
                        env=dict(os.environ, PYTHONHASHSEED='0'))
         captures.append(pickle.loads(path.read_bytes()))
     import pandas as pd
@@ -203,7 +251,8 @@ def main():
             raise AssertionError(f'Legacy adapter mismatch: {name}') from error
     report = {'passed': True, 'outputs': list(reference), 'output_count': len(reference),
               'current_source': source_identity(dx), 'tolerance': {'rtol': 1e-12, 'atol': 1e-12},
-              'scope': 'private helper values, indexes, dtypes and metadata; index-sensitive public Aspect callbacks',
+              'scope': ('pandas feature/group labels, values, indexes, dtypes and metadata' if args.labels_only else
+                        'private helper and pandas label contracts, indexes, dtypes, metadata; index-sensitive public Aspect callbacks'),
               'reference_runtime_shim': 'removed numpy.in1d spelling uses numpy.isin on 1-D feature lists'}
     output.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))

@@ -79,6 +79,12 @@ jobs:
         run: python python/dalex/ci/compare_plots.py --reference-root legacy-reference/python/dalex --output upstream-plot-parity.json
       - name: Compare legacy helper contracts and index-sensitive callbacks
         run: python python/dalex/ci/compare_legacy_adapters.py --reference-root legacy-reference/python/dalex --output upstream-adapter-parity.json
+      - name: Compare pandas 3 feature and group label contracts
+        run: |
+          python -m pip install 'pandas>=3,<4'
+          python -m pip check
+          python -m pip freeze > compatibility-pandas3-versions.txt
+          python python/dalex/ci/compare_legacy_adapters.py --labels-only --reference-root legacy-reference/python/dalex --output upstream-labels-pandas3.json
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -89,6 +95,8 @@ jobs:
             upstream-plot-parity.json
             upstream-adapter-parity.json
             compatibility-versions.txt
+            upstream-labels-pandas3.json
+            compatibility-pandas3-versions.txt
 
   test:
     name: Python ${{ matrix.python }} / ${{ matrix.os }} / pandas ${{ matrix.pandas || '<3' }}

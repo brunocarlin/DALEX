@@ -135,18 +135,30 @@ def shuffle_columns(data, columns, positions):
 
     Narwhals preserves native backends; pandas assignment retains legacy index semantics.
     """
-    names = [columns] if np.isscalar(columns) else list(columns)
     if len(positions) != data.shape[0]:
         raise ValueError("permutation must have the same length as data")
     index = _row_positions(positions, data.shape[0])
     if isinstance(data, pd.DataFrame):
-        other = data.loc[:, names].iloc[index, :]
+        multilevel = isinstance(data.columns, pd.MultiIndex)
+        if multilevel:
+            # A tuple can be one complete feature label or a partial level
+            # selector. Resolve pandas' selection on positional metadata, so
+            # prefixes still shuffle their features jointly and retain every
+            # original column level/name and extension dtype.
+            selected = pd.Series(np.arange(data.shape[1]), index=data.columns).loc[columns]
+            selected = selected.to_numpy() if isinstance(selected, pd.Series) else np.asarray([selected])
+            other = data.iloc[index, selected]
+        else:
+            scalar = pd.api.types.is_scalar(columns) or isinstance(columns, tuple) and columns in data.columns
+            names = [columns] if scalar else list(columns)
+            other = data.loc[:, names].iloc[index, :]
         result = data.copy()
         # Extension arrays assign positionally without losing categorical/nullable
         # dtypes on older pandas, or aligning shuffled row labels.
-        for name in names:
-            result[name] = other[name].array
+        for position, name in enumerate(other.columns):
+            result[name] = (other.iloc[:, position] if multilevel else other[name]).array
         return result
+    names = [columns] if np.isscalar(columns) else list(columns)
     frame = as_eager_dataframe(data)
     # Keep the Narwhals wrapper throughout the operation. Round-tripping the
     # selected native frame through take_rows used to validate/wrap it twice more.

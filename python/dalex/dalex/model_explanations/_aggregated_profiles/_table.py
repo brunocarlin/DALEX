@@ -63,7 +63,9 @@ class AggregatedPartitions:
                     elif series.dtype.is_float() and not (series.null_count() and series.is_nan().any()):
                         values = [np.nan if value is None else value for value in values]
                     columns.append(values)
-                    numeric.append(dtype != 'object' and series.dtype.is_numeric())
+                    distinct_missing = (namespace.__name__ != 'pandas' and series.dtype.is_float()
+                                        and series.null_count() and series.is_nan().any())
+                    numeric.append(dtype != 'object' and series.dtype.is_numeric() and not distinct_missing)
                 if all(numeric):
                     if any(frame[name].dtype.is_float() for name in self.groups):
                         # pandas nullable numeric rows share a floating dtype

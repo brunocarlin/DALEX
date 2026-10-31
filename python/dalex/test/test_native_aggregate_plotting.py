@@ -126,3 +126,16 @@ def test_temporal_group_captions_keep_nanoseconds_and_missing_labels(monkeypatch
     with native_computation_only(monkeypatch, backend):
         actual = nw.from_native(table._dalex_plot_data())['_groups_'].to_list()
     assert actual == expected
+
+
+@pytest.mark.parametrize('backend', ['polars', 'pyarrow'])
+def test_distinct_null_nan_group_does_not_promote_other_integer_captions(monkeypatch, backend):
+    from dalex.model_explanations._aggregated_profiles._table import AggregatedPartitions
+    frame = pl.DataFrame({'_vname_': ['x'] * 3, '_label_': ['model'] * 3,
+                           '_x_': [0., 1., 2.], '_yhat_': [1., 2., 3.],
+                           'g': [1., None, np.nan], 'h': [1, 2, 3]})
+    table = AggregatedPartitions([frame_as(frame, backend)], None, ['g', 'h'], {}, True)
+    expected = table._dalex_pandas_view()['_groups_'].tolist()
+    with native_computation_only(monkeypatch, backend):
+        actual = nw.from_native(table._dalex_plot_data())['_groups_'].to_list()
+    assert actual == expected == ['1.0_1', 'None_2', 'nan_3']

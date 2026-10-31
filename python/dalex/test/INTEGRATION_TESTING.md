@@ -72,7 +72,8 @@ Benchmarks run separately from tests, using identical saved models, values,
 seeds and explanation settings. Source/model fingerprints, every trial,
 numerical errors, elapsed time and RSS belong in the report. A speed ratio is
 not a substitute for integration correctness, and regressions remain visible.
-# Native plotting follow-up
+
+## Native plotting follow-up
 
 `test_native_plot_preparation.py` exercises native plot preparation for importance,
 diagnostics, ECDF/ROC/lift, Break Down/interactions and DALEX Shapley, together with
@@ -86,4 +87,3 @@ upstream local closure is not claimed to be pickleable.
 pinned, unmodified upstream pandas implementation. This runs in the required
 upstream-compatibility job; test equality covers layout and hover text as well as
 numerical traces. It complements the existing 27 explanation-output comparisons.
-

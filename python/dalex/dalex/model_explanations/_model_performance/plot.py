@@ -1,5 +1,6 @@
 import numpy as np
-import narwhals.stable.v2 as nw
+from .utils import roc_curve
+from ..._dataframe import column_values
 from ..._plotting import descending_order
 import plotly.graph_objects as go
 
@@ -45,21 +46,10 @@ def plot_roc(df_list, colors, title):
     fig = go.Figure()
     grid_points = 101
     for i, df in enumerate(df_list):
-        # Group native predictions before crossing the numerical plotting
-        # boundary. Missing predictions are omitted, but legacy denominators
-        # still include all observed targets.
-        source = df.select('y_hat', 'y')
-        if source.schema['y'].is_float():
-            source = source.with_columns(nw.when(nw.col('y').is_nan()).then(None).otherwise(nw.col('y')).alias('y'))
-        source = source.filter(~nw.col('y_hat').is_null())
-        if source.schema['y_hat'].is_float():
-            source = source.filter(~nw.col('y_hat').is_nan())
-        counts = source.with_columns((1 - nw.col('y')).alias('negative')).group_by('y_hat').agg(
-            nw.col('y').sum().alias('tp'), nw.col('negative').sum().alias('fp'),
-        ).sort('y_hat', descending=True)
-        y = df['y'].to_numpy()
-        tpr = np.cumsum(counts['tp'].to_numpy()) / np.nansum(y)
-        fpr = np.cumsum(counts['fp'].to_numpy()) / np.nansum(1 - y)
+        # The same vector kernel supplies scalar AUC and plotted ROC, preserving
+        # missing-score omission, ties and the original target denominators.
+        fpr, tpr = roc_curve(column_values(df.to_native(), 'y_hat', preserve_nulls=True),
+                             column_values(df.to_native(), 'y', preserve_nulls=True))
         if len(fpr) > grid_points:
             positions = np.random.choice(len(fpr), size=grid_points, replace=False)
             positions = positions[np.argsort(fpr[positions], kind='quicksort')]

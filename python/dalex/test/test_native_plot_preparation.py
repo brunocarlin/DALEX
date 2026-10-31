@@ -256,3 +256,97 @@ def test_attribution_plot_respects_edited_pandas_view(monkeypatch, family):
     with no_legacy_materialization(monkeypatch):
         fig = value.plot(show=False)
     assert all(caption == 'edited caption' for caption in fig.data[0].y)
+
+
+@pytest.mark.parametrize('backend', ['polars', 'pyarrow'])
+@pytest.mark.parametrize('family', ['importance', 'diagnostics', 'performance', 'break_down', 'shap'])
+def test_fit_through_plot_never_constructs_pandas_tables(monkeypatch, backend, family):
+    from test_native_profile_workflows import native_computation_only
+    data = pl.DataFrame({'x': [1., 4., 3., 2.], 'z': [4., 1., 2., 3.]})
+    frame = frame_as(data, backend)
+
+    def predict(model, batch):
+        assert type(batch) is type(frame)
+        return nw.from_native(batch)['x'].to_numpy()
+
+    exp = dx.Explainer(FormulaModel(), frame, data['x'].to_numpy(), predict_function=predict,
+                       model_type='regression', label='model', verbose=False)
+    observation = nw.from_native(frame).head(1).to_native()
+    with native_computation_only(monkeypatch, backend), no_legacy_materialization(monkeypatch):
+        if family == 'importance':
+            value = exp.model_parts(B=2, random_state=42)
+        elif family == 'diagnostics':
+            value = exp.model_diagnostics()
+        elif family == 'performance':
+            value = exp.model_performance()
+        else:
+            value = exp.predict_parts(observation, type=family, B=2, random_state=42)
+        kwargs = {'smooth': False} if family == 'diagnostics' else {}
+        assert value.plot(show=False, **kwargs) is not None
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'pyarrow'])
+@pytest.mark.parametrize('boolean', [False, True])
+def test_roc_missing_predictions_and_boolean_targets(backend, boolean):
+    from dalex.model_explanations import ModelPerformance
+    target = np.array([1, 0, 1, 0, 1, 0], dtype=bool if boolean else int)
+    data = pl.DataFrame({'y': target, 'y_hat': [.9, .8, .8, .1, None, np.nan],
+                         'residuals': np.zeros(6), 'label': ['model'] * 6})
+    value = ModelPerformance('classification')
+    value.residuals = frame_as(data, backend)
+    figure = value.plot(geom='roc', show=False)
+    np.testing.assert_allclose(figure.data[0].x, [0, 0, 1/3, 2/3])
+    np.testing.assert_allclose(figure.data[0].y, [0, 1/3, 2/3, 2/3])
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'pyarrow'])
+def test_roc_missing_targets_skip_in_denominators_and_groups(backend):
+    from dalex.model_explanations import ModelPerformance
+    data = pl.DataFrame({'y': [1., None, 0., 1.], 'y_hat': [.8, .9, .8, .1],
+                         'residuals': np.zeros(4), 'label': ['model'] * 4})
+    value = ModelPerformance('classification')
+    value.residuals = frame_as(data, backend)
+    figure = value.plot(geom='roc', show=False)
+    np.testing.assert_allclose(figure.data[0].x, [0, 0, 1, 1])
+    np.testing.assert_allclose(figure.data[0].y, [0, 0, .5, 1])
+
+
+@pytest.mark.parametrize('backend', ['pandas', 'polars', 'pyarrow'])
+def test_diagnostics_plot_combines_different_numeric_schemas(backend):
+    from dalex.model_explanations import ResidualDiagnostics
+    objects = []
+    for floating in [False, True]:
+        data = pl.DataFrame({'y_hat': np.array([1, 2, 3], dtype=np.float64 if floating else np.int32),
+                             'residuals': [1., 2., 3.], 'ids': [1, 2, 3], 'label': [str(floating)] * 3})
+        value = ResidualDiagnostics()
+        value.result = frame_as(data, backend)
+        objects.append(value)
+    figure = objects[0].plot(objects[1], smooth=False, show=False)
+    assert len(figure.data) == 2
+    for trace in figure.data:
+        np.testing.assert_allclose(trace.x, [1., 2., 3.])
+
+
+@pytest.mark.parametrize('backend', ['polars', 'pyarrow'])
+def test_roc_retains_exact_nullable_uint64_decision_scores(backend):
+    from dalex.model_explanations import ModelPerformance
+    data = pl.DataFrame({'y': [1, 0, 1, 1],
+                         'y_hat': pl.Series([2**63 + 1, 2**63 + 3, None, 2**63 + 5], dtype=pl.UInt64),
+                         'residuals': np.zeros(4), 'label': ['model'] * 4})
+    value = ModelPerformance('classification')
+    value.residuals = frame_as(data, backend)
+    figure = value.plot(geom='roc', show=False)
+    np.testing.assert_allclose(figure.data[0].x, [0, 0, 1, 1])
+    np.testing.assert_allclose(figure.data[0].y, [0, 1/3, 1/3, 2/3])
+
+
+@pytest.mark.parametrize('backend', ['polars', 'pyarrow'])
+def test_native_plot_schema_promotion_preserves_missing_values_and_rejects_rounding(backend):
+    from dalex._plotting import concat_frames
+    first = frame_as(pl.DataFrame({'x': [1., 2.]}), backend)
+    empty = frame_as(pl.DataFrame({'x': [None, None]}), backend)
+    joined = concat_frames([nw.from_native(first), nw.from_native(empty)])
+    assert joined['x'].to_list() == [1., 2., None, None]
+    large = frame_as(pl.DataFrame({'x': pl.Series([2**63 + 1], dtype=pl.UInt64)}), backend)
+    with pytest.raises(ValueError, match='round large integers'):
+        concat_frames([nw.from_native(first), nw.from_native(large)])

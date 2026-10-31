@@ -72,3 +72,18 @@ Benchmarks run separately from tests, using identical saved models, values,
 seeds and explanation settings. Source/model fingerprints, every trial,
 numerical errors, elapsed time and RSS belong in the report. A speed ratio is
 not a substitute for integration correctness, and regressions remain visible.
+# Native plotting follow-up
+
+`test_native_plot_preparation.py` exercises native plot preparation for importance,
+diagnostics, ECDF/ROC/lift, Break Down/interactions and DALEX Shapley, together with
+real Tree/Kernel SHAP metadata fitting, exports, plotting inputs and serialization.
+It guards legacy table access and conversions, compares all figure fields across
+pandas/Polars/Arrow at 1e-12, and checks edited views, mixed feature metadata, large
+integers, positional sampling and unequal/small lift datasets. KernelExplainer's
+upstream local closure is not claimed to be pickleable.
+
+`ci/compare_plots.py` independently compares 53 complete figure payloads with the
+pinned, unmodified upstream pandas implementation. This runs in the required
+upstream-compatibility job; test equality covers layout and hover text as well as
+numerical traces. It complements the existing 27 explanation-output comparisons.
+

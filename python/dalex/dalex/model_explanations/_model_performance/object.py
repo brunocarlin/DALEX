@@ -1,11 +1,11 @@
 import numpy as np
-import pandas as pd
 import narwhals.stable.v2 as nw
 
 from . import plot, utils
 from ... import _theme, _global_checks
 from ..._explanation import Explanation, EmptyTable, CompatibilityTable, IndexedTable
 from ..._dataframe import as_eager_dataframe
+from ..._plotting import result_frame
 
 
 class ModelPerformance(Explanation):
@@ -147,14 +147,14 @@ class ModelPerformance(Explanation):
         
         # are there any other objects to plot?
         if objects is None:
-            _df_list = [self.residuals.copy()]
+            _df_list = [result_frame(self, table='residuals')]
         elif isinstance(objects, self.__class__):  # allow for objects to be a single element
-            _df_list = [self.residuals.copy(), objects.residuals.copy()]
+            _df_list = [result_frame(self, table='residuals'), result_frame(objects, table='residuals')]
         elif isinstance(objects, (list, tuple)):  # objects as tuple or array
-            _df_list = [self.residuals.copy()]
+            _df_list = [result_frame(self, table='residuals')]
             for ob in objects:
                 _global_checks.global_check_object_class(ob, self.__class__)
-                _df_list += [ob.residuals.copy()]
+                _df_list += [result_frame(ob, table='residuals')]
         else:
             _global_checks.global_raise_objects_class(objects, self.__class__)
 

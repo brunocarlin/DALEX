@@ -123,6 +123,12 @@ class ShapTable(IndexedTable):
         super().__init__(data)
         self.observation = observation
 
+    def _dalex_plot_data(self):
+        # The plot uses formatted captions and numeric contributions only.
+        # Flattening mixed original feature values would lose their types and
+        # unnecessarily materialize the legacy pandas sidecar.
+        return self.data
+
     def _dalex_pandas_view(self):
         import pandas as pd
         from .._dataframe import to_pandas

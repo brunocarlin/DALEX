@@ -1,4 +1,4 @@
-from ..._dataframe import to_numpy, to_pandas, native_observation, frame_from_values
+from ..._dataframe import to_numpy, column_names, native_observation, frame_from_values, as_eager_dataframe
 import pandas as pd
 import numpy as np
 import sys
@@ -31,7 +31,8 @@ def model_matrix(data, model, shap_type):
             return torch.tensor(values, dtype=parameter.dtype, device=parameter.device)
         return torch.tensor(values, dtype=torch.get_default_dtype())
     return values
-from ..._explanation import Explanation
+from ..._explanation import Explanation, CompatibilityTable
+from ..._plotting import result_frame
 
 
 class ShapWrapper(Explanation):
@@ -64,6 +65,8 @@ class ShapWrapper(Explanation):
     ----------
     - https://github.com/slundberg/shap
     """
+
+    new_observation = CompatibilityTable()
 
     def __init__(self, type):
         self.shap_explainer = None
@@ -145,7 +148,10 @@ class ShapWrapper(Explanation):
             # GradientExplainer does not expose expected_value, but force plots
             # need the same background-prediction baseline as other explainers.
             self.expected_value = explainer.predict(explainer.data).mean()
-        self.new_observation = new_observation if isinstance(new_observation, pd.DataFrame) else to_pandas(new_observation)
+        # Preserve typed observation metadata until the legacy pandas attribute
+        # is explicitly read. Plotting can consume native arrays directly.
+        self.new_observation = (new_observation if isinstance(new_observation, pd.DataFrame)
+                                else as_eager_dataframe(new_observation).clone().to_native())
         self.shap_explainer_type = shap_explainer_type
 
     def plot(self, **kwargs):
@@ -169,6 +175,8 @@ class ShapWrapper(Explanation):
         - https://github.com/slundberg/shap
         """
         from shap import force_plot, summary_plot
+
+        observation = result_frame(self, table='new_observation').to_native()
         
         if self.type == 'predict_parts':
             expected_value = getattr(self, "expected_value", None)
@@ -188,14 +196,17 @@ class ShapWrapper(Explanation):
 
             force_plot(base_value=base_value,
                        shap_values=shap_values,
-                       features=self.new_observation.values,
-                       feature_names=self.new_observation.columns,
+                       features=to_numpy(observation),
+                       feature_names=column_names(observation),
                        matplotlib=True,
                        **kwargs)
         elif self.type == 'model_parts':
             values = self.result
             if isinstance(values, np.ndarray) and values.ndim == 3 and values.shape[-1] == 1:
                 values = values[..., 0]
+            if not isinstance(observation, pd.DataFrame):
+                kwargs.setdefault('feature_names', column_names(observation))
+                observation = to_numpy(observation)
             summary_plot(shap_values=values,
-                         features=self.new_observation,
+                         features=observation,
                          **kwargs)

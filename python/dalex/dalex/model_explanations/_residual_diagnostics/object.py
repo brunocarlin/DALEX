@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import plotly.express as px
 import narwhals.stable.v2 as nw
 from narwhals.dependencies import is_pandas_dataframe
@@ -8,6 +7,7 @@ from . import checks
 from ... import _theme, _global_checks, _global_utils
 from ..._explanation import Explanation, EmptyTable, IndexedTable
 from ..._dataframe import as_eager_dataframe, copy_for_edit
+from ..._plotting import result_frame, concat_frames
 
 
 class ResidualDiagnostics(Explanation):
@@ -132,24 +132,30 @@ class ResidualDiagnostics(Explanation):
 
         # are there any other objects to plot?
         if objects is None:
-            _df_list = [self.result.copy()]
+            _df_list = [result_frame(self)]
         elif isinstance(objects, self.__class__):  # allow for objects to be a single element
-            _df_list = [self.result.copy(), objects.result.copy()]
+            _df_list = [result_frame(self), result_frame(objects)]
         elif isinstance(objects, (list, tuple)):  # objects as tuple or array
-            _df_list = [self.result.copy()]
+            _df_list = [result_frame(self)]
             for ob in objects:
                 _global_checks.global_check_object_class(ob, self.__class__)
-                _df_list += [ob.result.copy()]
+                _df_list += [result_frame(ob)]
         else:
             _global_checks.global_raise_objects_class(objects, self.__class__)
 
-        _df = pd.concat(_df_list)
+        columns = list(dict.fromkeys([variable, yvariable, 'ids', 'label']))
+        # Do not concatenate unused original features (which may have different
+        # schemas across models) just to plot a few diagnostic columns.
+        _df = concat_frames((frame.select([name for name in columns if name in frame.columns])
+                             for frame in _df_list), how='diagonal').select(columns)
 
         if isinstance(N, int) and smooth:
             if N < _df.shape[0]:
-                _df = _df.sample(N, random_state=0, replace=False)
+                # Use pandas' historical positional sampling, independent of backend RNG.
+                positions = np.random.RandomState(0).choice(len(_df), size=N, replace=False)
+                _df = _df[positions.tolist(), :]
 
-        fig = px.scatter(_df,
+        fig = px.scatter(_df.to_native(),
                          x=variable,
                          y=yvariable,
                          hover_name='ids',

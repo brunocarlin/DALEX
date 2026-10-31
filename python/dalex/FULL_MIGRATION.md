@@ -118,11 +118,41 @@ The review report records the evidence for these criteria and its exact scope:
 - Custom explanation labels update native storage, including the historical
   performance index/added-column layout. Numeric profile grids avoid copying
   clean reference columns, and CP normalizes split values once per grid.
+- External SHAP observation metadata stays native until its legacy attribute is
+  read. `result_as(table='new_observation')` exports it independently. SHAP plots
+  use numerical arrays without publishing that pandas view, and explicit edits
+  to an already-read view remain authoritative.
+- Importance, residual-diagnostic, performance (ECDF/ROC/lift), Break Down and
+  DALEX Shapley plot preparation now uses native tables and numerical vectors.
+  Plotting does not implicitly publish their legacy result tables. Mixed Shapley
+  feature metadata need not be flattened to draw contribution bars. The upstream
+  compatibility CI job compares complete plot payloads, including tie order,
+  sampling, hover text and layout. Lift plots also handle fewer than 101 rows and
+  models with different row counts.
 - Private reference utilities and pandas-only helper branches remain for
-  compatibility; public fit paths use the native implementations above. Plot
-  preparation, legacy writable tables, pandas scalar display formatting and
-  optional PPS are intentional boundaries. Pandas-free installation, lazy
-  execution and untested dataframe engines are outside this contribution.
+  compatibility; public fit paths use the native implementations above. Legacy
+  writable tables, index/dtype compatibility, pandas scalar display formatting
+  and optional PPS are explicit boundaries.
+
+## Work remaining before claiming a full internal transition
+
+- CP/aggregated-profile, Aspect/triplot and fairness plotting still contain
+  pandas preparation. These are unfinished migration work, not a requirement of
+  the public pandas API. Typed partitions, group display labels, observation
+  indexes and edited public views must remain compatible when moving them.
+- Older private pandas algorithms remain alongside native implementations.
+  Replace them with compatibility adapters and consolidate shared computation,
+  rather than maintaining independent algorithms indefinitely.
+- Extend strict conversion guards through the remaining plot families and
+  external integrations. Existing cross-backend tests certify the covered
+  workflows, not every possible callback, dtype or third-party dependency.
+- The source-stamped performance report still records pandas importance and
+  partial/conditional-profile regressions, plus higher wide-frame Polars RSS.
+  Plotting-only measurements do not supersede those explanation benchmarks.
+
+Pandas-free installation, lazy execution and untested dataframe engines remain
+separate scope. NumPy/SciPy/tensor boundaries are intentional numerical contracts;
+SHAP's automatic GIL fallback and PPS dependency limits are external issues.
 
 ## External migration precedents
 

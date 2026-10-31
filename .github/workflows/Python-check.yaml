@@ -46,6 +46,8 @@ jobs:
         run: python python/dalex/ci/compare_legacy.py --reference-root legacy-reference/python/dalex --output upstream-parity.json
       - name: Load actual upstream explanation pickles and reuse legacy CP/Aspect objects
         run: python python/dalex/ci/check_legacy_pickles.py --reference-root legacy-reference/python/dalex --output upstream-pickle-compatibility.json
+      - name: Compare complete pandas plot payloads with unmodified upstream
+        run: python python/dalex/ci/compare_plots.py --reference-root legacy-reference/python/dalex --output upstream-plot-parity.json
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -53,6 +55,7 @@ jobs:
           path: |
             upstream-parity.json
             upstream-pickle-compatibility.json
+            upstream-plot-parity.json
             compatibility-versions.txt
 
   test:

@@ -35,11 +35,15 @@ PPS runs separately with its upstream-compatible pandas<2 dependencies.
 | `test_nullable_shap_boundaries.py`, `test_external_shap_seed.py` | Nullable numeric matrix adapters and sampled Kernel SHAP random-state behavior |
 | `test_seeded_concurrency.py` | Serial/concurrent seeded explanation parity and caller RNG isolation |
 | `test_native_datasets.py` | Every bundled CSV loader, parser parity, native backends and explicit row identifiers |
+| `test_native_dendrogram_plotting.py` | Native base dendrogram fitting/plotting, tied/constant/missing data, edited metadata, real sklearn/LightGBM pipelines and pickle |
+| `test_legacy_estimator_bridges.py` | Older LightGBM with an explicit model-owned matrix bridge across 13 explanation families, native exports, plots, edits and pickle |
+| `test_pandas_feature_label_compatibility.py` | Working integer/MultiIndex/partial/missing pandas label contracts, exact label values and original extension dtypes |
+| `test_float32_loss_compatibility.py` | Float32 and mixed-loss dtype/promotion, missing draws, exact pandas means, bounded native rounding and Python group labels |
 
 `native_computation_only` guards reject pandas DataFrame/Series construction and
-Narwhals-to-pandas conversion inside the guarded native computation. Public
-legacy views and plotting are exercised after that scope. Thus the tests check
-both backend preservation and the compatible pandas publication boundary.
+Narwhals-to-pandas conversion inside the guarded native computation. Native plot
+preparation is also guarded; public legacy views are exercised separately. Thus
+the tests check backend preservation and the compatible publication boundary.
 
 Independent expected-value tests cover typed UInt64 grids above 2**63, exact
 nanosecond values, finite Decimal interventions, native null versus NaN, missing/unused groups, mutation and
@@ -57,10 +61,13 @@ both scripts against a pinned upstream revision.
 ## Runtime matrix and external libraries
 
 `Python-check.yaml` runs the full suite on Python 3.10–3.14 on Linux/macOS,
-Windows 3.14, pandas 3, minimum pandas, and Polars 1/Narwhals 2. The required
+Windows 3.14, pandas 3, NumPy 1.23.5/pandas 1.5.3, and combined Polars 1/Narwhals
+2/Plotly 6 minimums. A Windows 3.10/LightGBM 4.6 bridge job covers older models.
+The required
 3.14t job checks the actual disabled GIL state after each dependency import.
 An installed-wheel Python 3.14 job runs 12 core explanation/export/plot/pickle
-workflows with pandas 3 and without Polars, Arrow, sklearn, SHAP, LIME or statsmodels.
+workflows plus the base dendrogram with pandas 3 and without Polars, Arrow,
+sklearn, SHAP, LIME or statsmodels.
 Diagnostics explicitly disable optional smoothing; widget/estimator extras remain
 separate capabilities. Wheel metadata verifies the documented dependency bounds.
 Separate required CPU jobs exercise PyTorch and TensorFlow Deep/Gradient SHAP;
@@ -87,8 +94,8 @@ pandas/Polars/Arrow at 1e-12, and checks edited views, mixed feature metadata, l
 integers, positional sampling and unequal/small lift datasets. KernelExplainer's
 upstream local closure is not claimed to be pickleable.
 
-`ci/compare_plots.py` independently compares 174 figures with pinned, unmodified
-upstream: 168 complete payloads and six triplots after removing only redundant
+`ci/compare_plots.py` independently compares 178 figures with pinned, unmodified
+upstream: 168 complete payloads and six triplots/four base dendrograms after removing only redundant
 unlabelled collinear hover samples. That density exception comes from removing
 browser layout resolution; geometry, text and layout still match. This runs in
 the required upstream-compatibility job and complements 29 numerical outputs,
@@ -139,7 +146,7 @@ latter exposed a serial RNG reset error concealed by linear models. It also
 checks the optional PPS boundary independently of PPS installation: external
 calls receive pandas, while score matrices return to the original backend.
 
-`ci/compare_legacy_adapters.py` compares 106 outputs from an unmodified upstream
+`ci/compare_legacy_adapters.py` compares 265 outputs from an unmodified upstream
 package in a separate interpreter. These cover private breakdown, Shapley, CP,
 aggregate, categorical statistics and Aspect/triplot helpers, including indexes,
 dtypes, nested metadata, serial/process paths and dtype-sensitive tie order.
@@ -147,6 +154,24 @@ The reference receives a documented NumPy spelling shim and a pickle-safe
 residual callback. Matching global seed initialization permits comparison with
 old helpers that relied on constructor-managed global NumPy state. The shared
 kernels retain local explicit streams rather than resetting caller RNG state.
+
+A 129-output label subset is repeated on pandas 3.1. It covers missing and
+MultiIndex feature labels, partial selectors and the original runtime's
+best-effort ordering. Float32 custom losses retain exact pandas reduction values
+and dtypes. Native Float32 accumulators have a separate precision bound
+(`rtol=8*2**-23`, `atol=2**-23`); 54 instrumented cases per full-suite job record
+the observed errors. These are not represented as float64 or bitwise parity.
+
+`test_duplicate_pandas_features.py` adds 79 cases for the duplicate-label APIs
+that work upstream: importance, performance, diagnostics, fairness and LIME.
+It covers grouped positional shuffles, extension dtypes, missing/reserved and
+MultiIndex labels, output mutation/independence, old table state, custom labels,
+process workers, external classes and typed matrix reconstruction/subsets.
+The reference harness independently compares those supported contracts;
+it does not turn inherited contribution/profile failures into a support claim.
+`ci/check_legacy_pickles.py` loads 16 actual unchanged-upstream objects, including
+a duplicate-column diagnostic table. Legacy pandas/native exports retain that
+table; explicit Polars export rejects its ambiguous physical names.
 
 The real optional PPS check covers pandas/Polars/Arrow, verifies native matrix
 storage and compares numeric values in its pandas 1.5.3-compatible environment.

@@ -1,14 +1,14 @@
 # Full Narwhals migration: implementation contract and progress
 
 This defines the expanded migration following the native-feature contribution.
-The [source-stamped review](benchmarks/results/FULL_MIGRATION_REVIEW.md) records
+The [latest source-stamped review](benchmarks/results/NARWHALS_FINAL_REVIEW.md) records
 the validated implementation, benchmarks and remaining boundaries. Earlier
 reports do not certify later commits automatically. PR #587 remains draft for
 manual review.
 
 The latest verified stable pandas release is **3.1.0 (October 22, 2026)**,
-checked against the [official site](https://pandas.pydata.org/) and
-[PyPI release metadata](https://pypi.org/pypi/pandas/json) on October 30, 2026.
+checked against the [official release notes](https://pandas.pydata.org/docs/whatsnew/index.html)
+and [PyPI release metadata](https://pypi.org/pypi/pandas/json) on October 31, 2026.
 There is no published pandas 4 release. Speculative future-major pandas and
 Narwhals package caps have been removed; code selects the maintained Narwhals
 stable.v2 API. Existing development-build tests use pandas 3.2, not pandas 4.
@@ -145,7 +145,8 @@ The review report records the evidence for these criteria and its exact scope:
   shared native kernels, retaining their historical pandas return contracts.
   Categorical statistics share vector kernels; PPS score reshaping returns to
   the original backend after its unavoidable external pandas call. Independent
-  upstream checks cover 106 helper outputs, including indexes and dtypes.
+  upstream checks cover 265 helper/public/text outputs, including indexes and
+  dtypes. A 129-output label subset is repeated independently on pandas 3.
 - Nonlinear hierarchical Shapley advances one serial RNG stream across cuts
   and final singles, preserving upstream estimates. A six-feature regression
   case exposed a reset error missed by the earlier linear examples. Pandas
@@ -156,6 +157,29 @@ The review report records the evidence for these criteria and its exact scope:
   renderer is an explicit output boundary; caller-edited nullable dtypes retain
   their existing decisions and formatting. Independent upstream text comparisons
   complement native construction guards.
+- Base Aspect dendrogram tooltips also read native metadata directly. Their
+  plotting path respects explicit legacy metadata edits without publishing an
+  otherwise unread pandas view. Native construction guards, real fitted
+  pipelines and pickle round trips cover this route.
+- Pandas MultiIndex feature labels, partial level selectors and missing labels
+  retain their working legacy importance/profile contracts. Original label
+  values and runtime-specific best-effort ordering remain at the pandas
+  metadata boundary. Grouped extension columns retain their input dtypes.
+- Float32 custom losses retain their public dtype and pandas reduction rounding.
+  Mixed Float32/Float64 loss lists are promoted explicitly before backend
+  construction; nullable draws retain native nulls. Native Float32 accumulator
+  differences are tested with a precision-appropriate bound and reported
+  separately from float64 parity.
+- Working duplicate-label pandas importance, performance, diagnostics, fairness
+  and LIME routes remain supported. Permutations select physical columns jointly;
+  diagnostic vectors share the native kernel while original labels are published
+  separately. External matrix reconstruction retains physical positions, column
+  Index/MultiIndex metadata, categorical dtypes and the legacy RangeIndex. These
+  inputs already fail in upstream contributions/profiles, so those methods still
+  require unique feature labels. Duplicate output columns must be renamed before
+  exporting to Polars/Arrow.
+  Diagnostic plotting through a Narwhals frame likewise needs uniquely named
+  selected variables or a renamed writable result projection.
 
 ## Remaining validation and precision boundaries
 
@@ -163,9 +187,10 @@ The review report records the evidence for these criteria and its exact scope:
   boundary. Do not silently round large integer axes to float. Existing guards
   and cross-backend tests certify covered workflows, not every possible callback,
   dtype or third-party dependency.
-- The source-stamped performance report still records pandas importance and
-  partial/conditional-profile regressions, plus higher wide-frame Polars RSS.
-  Plotting-only measurements do not supersede those explanation benchmarks.
+- Performance remains workload-dependent. The latest report separates input
+  conversion, initialization and explanation time, default precalculation,
+  thread settings, absolute/incremental RSS and regressions. Earlier plotting
+  measurements do not supersede end-to-end explanation benchmarks.
 
 Pandas-free installation, lazy execution and untested dataframe engines remain
 separate scope. NumPy/SciPy/tensor boundaries are intentional numerical contracts;
@@ -181,6 +206,12 @@ internal dataframe layer while retaining existing pandas usage.
 keeps its existing public imports and offers opt-in backend activation. This
 supports separating internal migration from changes to a library's public API;
 DALEX's specific API and numerical semantics still require its own tests.
+
+[LightGBM 4.7](https://github.com/lightgbm-org/LightGBM/releases/tag/v4.7.0)
+introduced Polars input through Narwhals and the Arrow PyCapsule interface.
+DALEX preserves those native inputs at the model boundary. Older estimators can
+instead use an explicit model-owned numerical bridge; that route has separate
+integration coverage and does not imply support for every dependency combination.
 
 [Narwhals' stable API policy](https://narwhals-dev.github.io/narwhals/backcompat/)
 provides a versioned namespace for compatibility. The declared 2.0 minimum is

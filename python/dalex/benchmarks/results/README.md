@@ -1,7 +1,9 @@
 # Migration evidence
 
-Start with [shared-kernel consolidation](SHARED_KERNEL_CONSOLIDATION.md), then
-the source-stamped [Aspect](ASPECT_PLOTTING_FOLLOWUP.md),
+Start with the [final migration review](NARWHALS_FINAL_REVIEW.md) for the latest
+validated source, CI, numerical precision, benchmarks and remaining limits.
+Earlier checkpoints include [shared-kernel consolidation](SHARED_KERNEL_CONSOLIDATION.md)
+and the source-stamped [Aspect](ASPECT_PLOTTING_FOLLOWUP.md),
 [fairness](FAIRNESS_PLOTTING_FOLLOWUP.md) and [CP](CP_PLOTTING_FOLLOWUP.md) checkpoints.
 They separate local validation, exact-commit CI, dependency limitations and
 plotting-only measurements. The [end-to-end benchmark tables](FULL_MIGRATION_BENCHMARKS.md)

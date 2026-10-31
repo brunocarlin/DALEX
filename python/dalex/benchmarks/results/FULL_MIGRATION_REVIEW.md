@@ -1,5 +1,9 @@
 # Full Narwhals migration review — 30 October 2026
 
+Historical checkpoint: the [October 31 final review](NARWHALS_FINAL_REVIEW.md)
+records the subsequent implementation, compatibility fixes and fresh benchmarks.
+The measurements below belong only to the source identified here.
+
 The supported eager pandas/Polars/Arrow explanation families now compute on native
 tables, with the existing writable pandas API retained at explicit compatibility
 and presentation boundaries. The contribution is ready for the author's and

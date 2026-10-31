@@ -5,7 +5,7 @@ and feature batches passed to the predictor retain their native backend. NumPy
 inputs still become pandas, and the existing H2O conversion remains in place.
 This contribution addresses ModelOriented/DALEX#575. Its scope is native
 computation and compatible public APIs, rather than removing the pandas package.
-Pandas remains required for historical default outputs and plotting preparation.
+Pandas remains required for historical default outputs and compatibility formatting.
 See [the implementation contract](FULL_MIGRATION.md) and source-stamped reports
 before treating any particular revision as validated.
 
@@ -28,8 +28,9 @@ before treating any particular revision as validated.
 
 Importance, contributions, CP/aggregated profiles, metrics/diagnostics, Aspect,
 fairness and Arena retain native result tables until public pandas access.
-Numerical vector operations use NumPy/SciPy. Plot construction intentionally
-consumes legacy views. `result_as()` exports independent native tables without
+Numerical vector operations use NumPy/SciPy. Plot preparation consumes native
+tables until a caller explicitly requests a legacy view; subsequent edits to
+that view remain authoritative. `result_as()` exports independent native tables without
 publishing those views; `result_as('pandas'|'polars'|'pyarrow')` chooses a backend.
 Reading a legacy table makes its subsequent edits and layout authoritative.
 For CP, aggregate and Shapley results use `partition=feature` when incompatible
@@ -154,10 +155,12 @@ Speculative future-major pandas and Narwhals caps have been removed. Narwhals
 subject to its documented bug-fix/backend/Python-version exceptions. The Python
 Packaging User Guide recommends [known dependency bounds](https://packaging.python.org/en/latest/discussions/install-requires-vs-requirements/),
 which does not establish a reason to reject an unpublished pandas major version.
-No pandas 4 release was available when checked on 2026-10-30. Tested stacks are
+No pandas 4 release was available when checked on 2026-10-31. Tested stacks are
 listed in the validation reports, including stable pandas 3.1 and the available
 3.2 development wheel; neither certifies an unreleased version. CI's pandas 2/3
 selectors choose representative major-version jobs rather than package bounds.
+The `Pandas4Warning` category seen in some pandas 3.1 reference/test logs names
+a future deprecation; it does not indicate a pandas 4 installation or release.
 
 No new mandatory Polars dependency is imposed on pandas-only users. Install `dalex[polars]`
 (Polars and PyArrow for pandas result materialization) for native Polars inputs.
@@ -216,7 +219,7 @@ Gradient SHAP's global NumPy APIs use a cooperating lock/state scope; sampled
 Kernel SHAP resumes the legacy state after background sampling. Threaded tests
 compare serial/concurrent values and verify global RNG isolation. Unseeded calls,
 arbitrary external RNG consumers and arbitrary model-library concurrency remain
-outside that guarantee. See [current review evidence](benchmarks/results/FULL_MIGRATION_REVIEW.md).
+outside that guarantee. See [current review evidence](benchmarks/results/NARWHALS_FINAL_REVIEW.md).
 
 ## Benchmark protocol
 
@@ -370,10 +373,28 @@ a matching missing original value receive weight in that bin. A numeric accumula
 grid containing a missing value raises a clear error because the value has no
 numeric ordering; use finite splits or a partial/conditional profile instead.
 
-Private compatibility/reference utilities still contain pandas implementations;
-native explanation fit paths do not call those algorithms. Pandas-only helper
-branches also retain index, extension-dtype and historical-label semantics. A
-literal absence of pandas imports is not the completion criterion for this
-backwards-compatible migration. Lazy frames, other eager dataframe engines,
-arbitrary neural architectures/GPU execution and pandas-free installation are
-outside the currently certified scope.
+Private compatibility utilities now adapt shared native kernels rather than
+maintaining duplicate pandas algorithms. Pandas input/index adapters, scalar
+formatting and public/private pandas return contracts remain explicit. This
+includes MultiIndex/partial selectors, missing feature labels and best-effort
+ordering of non-portable Python labels. Float32 custom-loss reductions preserve
+pandas dtype/rounding; mixed precision and nullable draws are tested separately.
+
+Original pandas duplicate feature labels retain the working importance,
+performance, diagnostics, fairness and LIME contracts. Their positional
+assignment and publication adapters stay explicit; native input backends are
+not converted to pandas. Duplicate result columns cannot become physical
+Polars/Arrow fields: rename the writable projection before requesting that
+export. Contributions/profiles already fail for duplicate features upstream;
+use unique feature names there. External matrix reconstruction restores original
+pandas column metadata and categorical types without collapsing duplicate keys.
+Plot boundaries requiring a Narwhals frame also need unique physical columns;
+select uniquely named diagnostic variables or rename the writable result view.
+
+The [final review and evidence](benchmarks/results/NARWHALS_FINAL_REVIEW.md)
+distinguish native dataframe computation from those compatibility boundaries.
+Lazy frames, other eager dataframe engines, arbitrary neural architectures/GPU
+execution and pandas-free installation remain outside the certified scope.
+The proposed environment change includes Python >=3.10 and Plotly >=6.0; both
+need maintainer review. Plotly 6 widgets use anywidget and require current
+notebook support; see the [Plotly migration guide](https://plotly.com/python/v6-migration/).

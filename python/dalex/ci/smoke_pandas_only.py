@@ -14,6 +14,10 @@ class Model:
         return frame['x'].to_numpy() * 2 - frame['z'].to_numpy() / 2
 
 
+def residual(model, frame, target):
+    return target - model.predict(frame)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--assert-minimal', action='store_true')
@@ -36,7 +40,8 @@ def main():
                            index=[10, 30, 20, 60, 50, 40])
     model = Model()
     target = model.predict(frame) + np.array([.1, -.1, .2, -.2, .1, -.1])
-    exp = dx.Explainer(model, frame, target, model_type='regression', verbose=False)
+    exp = dx.Explainer(model, frame, target, residual_function=residual,
+                       model_type='regression', verbose=False)
     np.testing.assert_allclose(exp.predict(frame), model.predict(frame))
     values = {
         'importance': exp.model_parts(N=None, B=2, random_state=42),
@@ -51,6 +56,9 @@ def main():
         values[kind] = exp.model_profile(type=kind, variables=['x'], N=None,
                                          grid_points=3, random_state=42, verbose=False)
     aspect = dx.Aspect(exp)
+    assert aspect.plot_dendrogram(show=False) is not None
+    assert '_compatibility__dendrogram_aspects_ordered' not in aspect.__dict__
+    assert pickle.loads(pickle.dumps(aspect)).plot_dendrogram(show=False) is not None
     values['model_aspect'] = aspect.model_parts(N=None, B=2, random_state=42)
     values['model_triplot'] = aspect.model_triplot(N=None, B=2, random_state=42)
     for name, value in values.items():
@@ -74,6 +82,7 @@ def main():
               'current_source': {'python_modules': len(files), 'python_source_sha256': digest.hexdigest(),
                   'normalization': 'sorted relative paths and source bytes, CRLF normalized to LF'},
               'core_dependency_bounds': bounds,
+              'base_dendrogram': True,
               'families': list(values), 'optional_modules_present': optional,
               'versions': {name: metadata.version(name) for name in ['dalex', 'pandas', 'numpy', 'narwhals', 'plotly', 'scipy']}}
     Path(args.output).write_text(json.dumps(report, indent=2), encoding='utf-8')

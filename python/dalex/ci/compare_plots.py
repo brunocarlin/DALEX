@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 
-def canonical_triplot(figure):
+def canonical_triplot(figure, *, first_trace=1):
     """Remove only redundant, unlabelled points on monotone straight segments.
 
     Upstream asks a browser to resolve autorange padding before adding hover
@@ -28,7 +28,7 @@ def canonical_triplot(figure):
             return np.frombuffer(base64.b64decode(value['bdata']), dtype=value['dtype'])
         return np.asarray(value)
 
-    for trace in figure['data'][1:]:
+    for trace in figure['data'][first_trace:]:
         x, y = array(trace['x']), array(trace['y'])
         text = trace.get('text', [None] * len(x))
         assert len(x) == len(y) == len(text)
@@ -182,6 +182,15 @@ def capture(root):
             save(f'regression-fairness-{multiple}-{kind}', fairness[0].plot(fairness[1] if multiple else None,
                                                                           type=kind, show=False, **options))
     aspects = [dx.Aspect(exp) for exp in exps]
+    for digits in [0, 3]:
+        save(f'aspect-dendrogram-{digits}', aspects[0].plot_dendrogram(digits=digits, show=False))
+    save('aspect-dendrogram-custom', aspects[0].plot_dendrogram(
+        title='Custom dendrogram', lines_interspace=37, digits=2,
+        rounding_function=lambda x, digits: np.ceil(x * 10**digits) / 10**digits, show=False))
+    constant_data = pd.DataFrame(np.zeros((8, 3)), columns=['z', 'a', 'b'])
+    constant = dx.Aspect(dx.Explainer(LinearRegression().fit(constant_data, np.zeros(8)),
+        constant_data, np.zeros(8), label='constant', verbose=False))
+    save('aspect-dendrogram-constant', constant.plot_dendrogram(show=False))
     groups = {'za': ['z', 'a'], 'b': ['b']}
     model_parts = [aspect.model_parts(variable_groups=groups, N=30, B=3, random_state=42) for aspect in aspects]
     for split in ['model', 'aspect']:
@@ -232,6 +241,9 @@ def main():
         try:
             if name.startswith(('aspect-predict-triplot-', 'aspect-model-triplot-')):
                 compare_figures(canonical_triplot(a[name]), canonical_triplot(b[name]))
+            elif name.startswith('aspect-dendrogram-'):
+                compare_figures(canonical_triplot(a[name], first_trace=0),
+                                canonical_triplot(b[name], first_trace=0))
             else:
                 compare_figures(a[name], b[name])
         except AssertionError as error:
@@ -239,9 +251,10 @@ def main():
     report = {'passed': True, 'figure_count': len(a), 'figures': list(a),
               'reference_root': str(roots[0][1]), 'current_source': source_identity(dx),
               'tolerance': {'rtol': 1e-12, 'atol': 1e-12},
-              'scope': 'all figure fields; six triplots normalize redundant unlabelled collinear hover samples',
+              'scope': 'all figure fields; six triplots and four base dendrograms normalize redundant unlabelled collinear hover samples',
               'triplot_hover_density_exception': [name for name in a if name.startswith(
                   ('aspect-predict-triplot-', 'aspect-model-triplot-'))],
+              'dendrogram_hover_density_exception': [name for name in a if name.startswith('aspect-dendrogram-')],
               'reference_runtime_shim': 'numpy.in1d uses numpy.isin for one-dimensional feature lists when absent'}
     output.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))

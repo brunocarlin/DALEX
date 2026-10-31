@@ -59,6 +59,16 @@ def plot_dendrogram(linkage_matrix, labels=None):
 
 
 def add_text_and_tooltips_to_dendrogram(fig, _dendrogram_aspects_ordered, rounding_function, digits):
+    from .._explanation import IndexedTable
+    from ._plotting import as_plot_data
+    source = _dendrogram_aspects_ordered
+    if isinstance(source, IndexedTable):
+        source = source.data
+    data = as_plot_data(source)
+    rows = data.rows()
+    # Pandas scalar callbacks keep their historical scalar types. Native
+    # backends need only the small numerical column, not a pandas publication.
+    numbers = data.frame['min_depend'].to_native() if data.pandas_rounding else data.frame['min_depend'].to_numpy()
     res_fig = copy_dendrogram(fig)
     corner_scatters = [] # scatters with depend=0
     for i, scatter in enumerate(res_fig.data):
@@ -74,7 +84,8 @@ def add_text_and_tooltips_to_dendrogram(fig, _dendrogram_aspects_ordered, roundi
         scatter.y = np.insert(scatter.y, 2, y_cord)
 
         # add text labels and tooltips
-        min_depend_val_rounded = str(rounding_function(_dendrogram_aspects_ordered.iloc[i].min_depend, digits))
+        minimum = numbers.iloc[i] if data.pandas_rounding else numbers[i]
+        min_depend_val_rounded = str(rounding_function(minimum, digits))
         if x_cord != 1:
             scatter.mode = "text+lines"
             scatter["text"] = [None, None, str(rounding_function(1-x_cord, digits)), None, None]
@@ -83,15 +94,15 @@ def add_text_and_tooltips_to_dendrogram(fig, _dendrogram_aspects_ordered, roundi
             scatter.hoverlabel = {"bgcolor": "rgba(0,0,0,0.8)"}
             scatter.hovertext = (
                 "Min depend value: " + min_depend_val_rounded
-                + "<br>(between variables: " + ", ".join(_dendrogram_aspects_ordered.iloc[i].vars_min_depend) + ")"
-                + "<br>Variables:<br>" + "<br>".join(_dendrogram_aspects_ordered.iloc[i].variable_names)
+                + "<br>(between variables: " + ", ".join(rows[i]['vars_min_depend']) + ")"
+                + "<br>Variables:<br>" + "<br>".join(rows[i]['variable_names'])
             )
         else:
             scatter.hoverlabel = {"bgcolor": "rgba(0,0,0,0.8)"}
             scatter.hovertext = (
                 "Min depend value: " + min_depend_val_rounded
-                +  "<br>(between variables: " + ", ".join(_dendrogram_aspects_ordered.iloc[-1].vars_min_depend) + ")"
-                + "<br>Variables:<br>" + "<br>".join(_dendrogram_aspects_ordered.iloc[-1].variable_names)
+                +  "<br>(between variables: " + ", ".join(rows[-1]['vars_min_depend']) + ")"
+                + "<br>Variables:<br>" + "<br>".join(rows[-1]['variable_names'])
             )
             corner_scatters.append(scatter)
 

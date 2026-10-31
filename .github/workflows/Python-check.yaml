@@ -255,7 +255,7 @@ jobs:
             neural-versions.txt
 
   minimum-polars:
-    name: Python 3.14 / Polars 1.0 / Narwhals 2.0
+    name: Python 3.14 / Polars 1.0 / Narwhals 2.0 / Plotly 6.0
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -268,7 +268,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.14'
-      - run: python -m pip install -e ./python/dalex -r python/dalex/ci/requirements.txt 'pandas<3' polars==1.0.0 narwhals==2.0.0
+      - run: python -m pip install -e ./python/dalex -r python/dalex/ci/requirements.txt 'pandas<3' polars==1.0.0 narwhals==2.0.0 plotly==6.0.0
       - run: |
           python -m pip check
           python -m pip freeze > minimum-polars-versions.txt
@@ -294,7 +294,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      - run: python -m pip install -e ./python/dalex -r python/dalex/ci/requirements.txt numpy==1.24.4 pandas==1.5.3 narwhals==2.0.0 'scikit-learn<1.7'
+      - run: python -m pip install -e ./python/dalex -r python/dalex/ci/requirements.txt numpy==1.23.5 pandas==1.5.3 narwhals==2.0.0 'scikit-learn<1.7'
       - run: |
           python -m pip check
           python -m pip freeze > minimum-versions.txt
@@ -316,3 +316,31 @@ jobs:
             minimum-versions.txt
             pps-backend-parity.json
             legacy-pps-tests.xml
+
+  legacy-estimator-bridge:
+    name: Windows Python 3.10 / LightGBM 4.6 / explicit model bridge
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      POLARS_MAX_THREADS: '8'
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - run: python -m pip install -e ./python/dalex pytest pytest-timeout numpy==1.23.5 pandas==1.5.3 polars==2.0.0 pyarrow==25.0.1 narwhals==2.0.0 scikit-learn==1.6.1 lightgbm==4.6.0
+      - run: |
+          python -m pip check
+          python -m pip freeze > legacy-estimator-versions.txt
+          python -m pytest -vv -ra --timeout=120 --timeout-method=thread python/dalex/test/test_legacy_estimator_bridges.py --junitxml=legacy-estimator-bridge.xml
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-estimator-bridge
+          path: |
+            legacy-estimator-bridge.xml
+            legacy-estimator-versions.txt

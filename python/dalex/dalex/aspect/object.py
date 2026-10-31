@@ -190,8 +190,13 @@ class Aspect(ResultTables):
         m = len(matrix_values(self._native_depend_matrix())[1])
         plot_height = 78 + 71 + m * lines_interspace + (m + 1) * lines_interspace / 4
         fig = self._hierarchical_clustering_dendrogram
+        # Read native storage directly. The descriptor is the writable legacy
+        # pandas boundary, so accessing it here would publish a view just to
+        # prepare tooltips. An explicitly read/edited view stays authoritative.
+        aspects = self.__dict__.get('_compatibility__dendrogram_aspects_ordered',
+                                    self.__dict__['_dendrogram_aspects_ordered'])
         fig = plot.add_text_and_tooltips_to_dendrogram(
-            fig, self._dendrogram_aspects_ordered, rounding_function, digits
+            fig, aspects, rounding_function, digits
         )
         fig = plot._add_points_on_dendrogram_traces(fig)
         fig.update_layout(

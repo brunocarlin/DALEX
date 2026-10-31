@@ -42,6 +42,15 @@ def capture(root, output):
     classifier = LogisticRegression().fit(frame, binary)
     classification = dx.Explainer(classifier, frame, binary, label='binary', verbose=False)
     objects['fairness_classification'] = classification.model_fairness(np.tile(['a','b'],20), 'a')
+    # This real old state cannot be wrapped as a Narwhals frame: its feature
+    # labels are duplicated. Only the explanation table is pickled, so the
+    # local predictor closure is not part of this object's serialized state.
+    duplicate = frame.copy()
+    duplicate.columns = ['a', 'a', 'c']
+    duplicate_exp = dx.Explainer(model, duplicate, y, model_type='regression',
+        predict_function=lambda fitted, batch: fitted.predict(np.asarray(batch)),
+        label='duplicate', verbose=False)
+    objects['diagnostics_duplicate'] = duplicate_exp.model_diagnostics()
     # Use DALEX's documented dump protocol to drop its default local residual
     # callback. A raw pickle of that callback already fails in upstream.
     explainer_bytes = exp.dumps()
@@ -76,6 +85,14 @@ def main():
     for name, expected in payload['tables'].items():
         pd.testing.assert_frame_equal(objects[name].result, expected)
         pd.testing.assert_frame_equal(objects[name].result_as('pandas'), expected)
+        if not expected.columns.is_unique:
+            pd.testing.assert_frame_equal(objects[name].result_as(), expected)
+            try:
+                objects[name].result_as('polars')
+            except ValueError as error:
+                assert 'Duplicate pandas column labels' in str(error)
+            else:
+                raise AssertionError('Native exports must reject ambiguous duplicate columns')
     pd.testing.assert_frame_equal(objects['aspect'].depend_matrix, payload['depend_matrix'])
     assert objects['aspect'].get_aspects() == payload['groups']
     assert objects['aspect'].plot_dendrogram(show=False) is not None
@@ -84,8 +101,11 @@ def main():
     pd.testing.assert_frame_equal(aggregate.result, payload['tables']['partial'], check_exact=False,
                                   rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(objects['explainer'].predict(objects['explainer'].data), objects['explainer'].y_hat)
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'benchmarks'))
+    from _benchmark_utils import source_identity
     result = {'passed':True, 'reference_root':str(Path(args.reference_root).resolve()),
         'objects_loaded':len(objects),'legacy_tables_compared':len(payload['tables']),
+        'current_source':source_identity(dx),'legacy_duplicate_pandas_exports':True,
         'legacy_cp_aggregation':True,'legacy_aspect_groups_and_plot':True,
         'python':sys.version,'pandas':pd.__version__}
     Path(args.output).write_text(json.dumps(result,indent=2)+'\n')

@@ -1,7 +1,9 @@
 """Compare complete figure payloads with a separate, unmodified pandas source.
 
 Includes model fits, multiple models, limits/baselines, tie ordering, sampled
-residuals and classification curves. No browser or screenshot is required.
+residuals and classification curves. No screenshot comparison is used. The
+unmodified reference's dendrogram/triplot path requires working Kaleido/browser
+layout resolution; the migrated implementation no longer requires that path.
 """
 import argparse
 import json

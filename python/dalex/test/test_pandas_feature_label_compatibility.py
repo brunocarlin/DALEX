@@ -65,6 +65,22 @@ def test_missing_feature_labels_survive_importance_label_sort_and_record_lookup(
     pd.testing.assert_frame_equal(value.result_as('pandas'), value.result)
 
 
+def test_deep_multiindex_retains_exact_labels_and_legacy_best_effort_order():
+    base = 2**63
+    prefix = ('level',) * 13
+    labels = [prefix + (base + offset,) for offset in [2, 1, 3]]
+    values = np.random.default_rng(93).normal(size=(24, 3))
+    frame = pd.DataFrame(values, columns=pd.MultiIndex.from_tuples(labels))
+    target = values @ [2., -1., .5] + .1
+    exp = dx.Explainer(LinearRegression().fit(values, target), frame, target,
+                       predict_function=predict_numbers, verbose=False)
+    value = exp.model_parts(N=16, B=3, random_state=42)
+    actual = [name for name in value.permutation.columns if isinstance(name, tuple)]
+    # Upstream's best-effort tuple sorting leaves these adjacent large levels
+    # in input order. Preserve that layout without changing the label values.
+    assert actual == [prefix + (base + offset,) for offset in [2, 1, 3]]
+
+
 @pytest.mark.parametrize('selection', [None, ['g'], [('g', 1), ('h', 1)]])
 @pytest.mark.parametrize('kind', ['variable_importance', 'ratio', 'difference'])
 def test_multiindex_importance_full_and_partial_labels_keep_raw_permutations(selection, kind):

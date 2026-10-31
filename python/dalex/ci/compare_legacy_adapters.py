@@ -26,6 +26,22 @@ def indexed_residual(model, frame, target):
     return target - indexed_predict(model, frame)
 
 
+def float32_loss(observed, predicted):
+    import numpy as np
+    return np.float32(np.mean((observed - predicted)**2))
+
+
+def mixed_precision_loss(observed, predicted):
+    import numpy as np
+    value = np.mean((observed - predicted)**2)
+    return np.float32(value) if value < 1 else np.float64(value)
+
+
+def float32_missing_loss(observed, predicted):
+    import numpy as np
+    return np.float32(np.nan) if observed[0] > 0 else float32_loss(observed, predicted)
+
+
 def capture(root, labels_only=False):
     sys.path.insert(0, str(Path(root).resolve()))
     import numpy as np
@@ -70,6 +86,9 @@ def capture(root, labels_only=False):
     labeled_cases = [('multiindex', multi, None), ('multiindex-prefix', multi, ['g']),
                      ('integer', integer, None), ('none-label', missing_label, None),
                      ('python-group-labels', data, heterogeneous)]
+    deep = data.copy()
+    deep.columns = pd.MultiIndex.from_tuples([('level',) * 13 + (2**63 + offset,) for offset in [2, 1, 3]])
+    labeled_cases.append(('deep-integer-levels', deep, None))
     for case, label in [('nan-label', np.nan), ('na-label', pd.NA), ('nat-label', pd.NaT)]:
         frame = data.copy()
         frame.columns = pd.Index([label, 'a', 'b'], dtype=object)
@@ -95,6 +114,10 @@ def capture(root, labels_only=False):
                 N=16, grid_points=3, random_state=42, verbose=False).result)
     if labels_only:
         return result
+    for loss in [float32_loss, mixed_precision_loss, float32_missing_loss]:
+        for kind in ['variable_importance', 'ratio', 'difference']:
+            value = exp.model_parts(loss_function=loss, type=kind, N=16, B=7, random_state=42)
+            save(f'loss-dtype-{loss.__name__}-{kind}', (value.result, value.permutation))
 
     mixed = data.assign(cat1=['low', 'high'] * 16, cat2=['yes', 'no', 'no', 'yes'] * 8)
     save('categorical-association', dependence.calculate_cat_assoc_matrix(mixed, ['cat2', 'cat1'], len(mixed)))

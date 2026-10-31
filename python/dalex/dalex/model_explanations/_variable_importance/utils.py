@@ -74,6 +74,16 @@ def calculate_variable_importance(explainer,
         records = [list(record.values()) for record in result]
         loss_columns = {field: [record[position] for record in records]
                         for field, position in zip(fields, positions)}
+    for field, values in loss_columns.items():
+        if any(isinstance(value, np.float32) for value in values):
+            # A list of NumPy scalars is inferred differently by dataframe
+            # engines (Polars can narrow a mixed list to its first Float32).
+            # Resolve numeric promotion before construction, including pandas'
+            # historical Float64 promotion when Float32 and None are mixed.
+            numeric = np.asarray([np.nan if value is None else value for value in values])
+            if numeric.dtype.kind in 'biuf':
+                dtype = nw.Float32 if numeric.dtype == np.dtype('float32') else nw.Float64
+                loss_columns[field] = nw.new_series(field, values, dtype=dtype, backend=namespace).to_native()
     raw = nw.from_dict(loss_columns, backend=namespace)
     clean_float = (all(dtype == nw.Float64 for dtype in raw.schema.values()) and
                    all(isinstance(value, (float, np.floating)) and not np.isnan(value)
@@ -85,11 +95,13 @@ def calculate_variable_importance(explainer,
         means = raw.select(nw.all().mean()).to_numpy()[0]
     else:
         # Retain the declared stable-v2 minimum and non-float/NaN semantics.
-        means = raw.select([
-            nw.when(nw.col(field).cast(nw.Float64).is_nan()).then(None)
-            .otherwise(nw.col(field).cast(nw.Float64)).mean().alias(field)
-            for field in fields
-        ]).to_numpy()[0]
+        expressions = []
+        for field in fields:
+            dtype = nw.Float32 if raw.schema[field] == nw.Float32 else nw.Float64
+            column = nw.col(field).cast(dtype)
+            expressions.append(nw.when(column.is_nan()).then(None).otherwise(column)
+                               .cast(dtype).mean().cast(dtype).alias(field))
+        means = raw.select(expressions).to_numpy()[0]
     order = np.argsort(means, kind='quicksort')
     losses = means[order]
     full_model = means[next(i for i, name in enumerate(names) if isinstance(name, str) and name == '_full_model_')]

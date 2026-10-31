@@ -3,6 +3,15 @@ import narwhals.stable.v2 as nw
 from ..._explanation import export_result_frame
 
 
+def _legacy_column(column):
+    """Historical pandas publication dtype, without deprecated floating flags."""
+    import pandas as pd
+    converted = column.convert_dtypes()
+    if pd.api.types.is_float_dtype(converted.dtype) and not isinstance(column.dtype, pd.ArrowDtype):
+        converted = column.infer_objects()
+    return converted
+
+
 def concat_compatible(frames):
     """Concatenate compatible typed tables without silently stringifying cells."""
     frames = [nw.from_native(frame, eager_only=True) for frame in frames]
@@ -55,8 +64,8 @@ class ProfileTables:
             table.index = index
             tables.append(table)
         result = pd.concat(tables)
-        converted = result.loc[:, self.variables].convert_dtypes(convert_floating=False)
-        for name, column in converted.items():
+        for name in self.variables:
+            column = _legacy_column(result[name])
             result[name] = column.array
         return result
 

@@ -27,6 +27,20 @@ def capture(root):
     def save(name, figure):
         figures[name] = json.loads(figure.to_json())
 
+    for include in [False, True]:
+        for count in [1, 2]:
+            for multiple in [False, True]:
+                cp = [exp.predict_profile(data.iloc[[3, 7][:count]], variables=['z', 'a'] if multiple else ['z'],
+                    grid_points=5, variable_splits_with_obs=include, verbose=False) for exp in exps]
+                for color in ['_label_', '_ids_']:
+                    for points in [False, True]:
+                        save(f'cp-{include}-{count}-{multiple}-{color}-{points}', cp[0].plot(cp[1],
+                            color=color, show_observations=points, show=False))
+    nullable_data = data.round().astype('Float64')
+    nullable = dx.Explainer(exps[0].model, nullable_data, y, label='nullable', verbose=False)
+    save('cp-nullable-floating-captions', nullable.predict_profile(nullable_data.iloc[[3]],
+        variables=['z', 'a'], grid_points=3, verbose=False).plot(show=False))
+
     for family in ['partial', 'conditional', 'accumulated']:
         profiles = [exp.model_profile(type=family, N=None, variables=['z', 'a'], grid_points=5,
                                        random_state=42, verbose=False) for exp in exps]
@@ -37,6 +51,15 @@ def capture(root):
     grouped_data = data.assign(group=np.where(data.z > 0, 'positive', 'negative'))
     grouped = dx.Explainer(exps[0].model, grouped_data, y, label='grouped', verbose=False,
                             predict_function=lambda model, batch: model.predict(batch[['z', 'a', 'b']]))
+    for count in [1, 2]:
+        for multiple in [False, True]:
+            cp = grouped.predict_profile(grouped_data.iloc[[3, 7][:count]],
+                variables=['group', 'z'] if multiple else ['group'], grid_points=5,
+                variable_splits_with_obs=True, verbose=False)
+            for color in ['_label_', '_ids_']:
+                for points in [False, True]:
+                    save(f'cp-categorical-{count}-{multiple}-{color}-{points}', cp.plot(variable_type='categorical',
+                        variables=['group', 'z'] if multiple else None, color=color, show_observations=points, show=False))
     for family in ['partial', 'conditional', 'accumulated']:
         for categorical in [False, True]:
             profile = grouped.model_profile(type=family, N=None,

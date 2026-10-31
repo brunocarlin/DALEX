@@ -144,13 +144,13 @@ The review report records the evidence for these criteria and its exact scope:
 
 ## Work remaining before claiming a full internal transition
 
-- CP, Aspect/triplot and fairness plotting still contain
+- Aspect/triplot and fairness plotting still contain
   pandas preparation. These are unfinished migration work, not a requirement of
   the public pandas API. Typed partitions, group display labels, observation
   indexes and edited public views must remain compatible when moving them.
 - Aggregated-profile line/bar preparation now uses native tables, including
   legacy group captions and edited pandas views. Its `geom='profiles'` overlay
-  still delegates to the pandas-prepared CP plot. Combining incompatible native
+  now delegates to native CP preparation as well. Combining incompatible native
   partition scalar types remains a precision boundary; it must not silently
   round large integer axes to float.
 - Older private pandas algorithms remain alongside native implementations.
@@ -181,3 +181,19 @@ DALEX's specific API and numerical semantics still require its own tests.
 [Narwhals' stable API policy](https://narwhals-dev.github.io/narwhals/backcompat/)
 provides a versioned namespace for compatibility. The declared 2.0 minimum is
 tested explicitly; newer convenience methods cannot be assumed available there.
+
+## CP plotting follow-up
+
+CP line/bar preparation and aggregated raw-profile overlays retain native tables.
+Observation indexes align original predictions before multiple-model concatenation.
+Typed axes and exact marker comparisons stay separate from scalar hover formatting.
+Explicit pandas result and observation edits remain authoritative. A shared column
+formatter preserves historical pandas publication dtypes without the deprecated
+`convert_floating` flag; this is a display compatibility boundary. Native CP
+fit-to-plot guards forbid pandas DataFrame/Series construction.
+
+The focused suite covers 91 cases, and the required upstream comparison now
+includes 132 full figures. These checks do not certify every possible mixed
+scalar partition: incompatible exact large-integer/float axes still require
+separate selections rather than silent coercion. Aspect/triplot/fairness plotting,
+private algorithm consolidation and measured regressions remain active work.

@@ -66,6 +66,40 @@ def worker(args):
             value.residuals = native(columns)
             return value
 
+    elif args.family in ['ceteris-paribus', 'profiles-overlay']:
+        from dalex.predict_explanations._ceteris_paribus._table import ProfileTables, ObservationTable
+        from dalex.model_explanations._aggregated_profiles._table import AggregatedPartitions
+        observations, features, grid_count = 20, 8, 31
+        names = [f'x{i}' for i in range(features)]
+        original = rng.normal(size=(observations, features))
+        grid = np.linspace(-2., 2., grid_count)
+        positions = np.repeat(np.arange(observations), grid_count)
+        indexes = [positions.copy() for _ in names]
+        cp_frames, ap_frames = [], []
+        for index, name in enumerate(names):
+            values = original[positions].copy()
+            values[:, index] = np.tile(grid, observations)
+            predictions = values.sum(axis=1)
+            cp_frames.append(native(dict({column: values[:, i] for i, column in enumerate(names)},
+                _original_=original[positions, index], _yhat_=predictions, _vname_=[name] * len(positions),
+                _ids_=positions, _label_=['model'] * len(positions))))
+            ap_frames.append(native({'_vname_': [name] * grid_count, '_label_': ['model'] * grid_count,
+                '_x_': grid, '_yhat_': predictions.reshape(observations, grid_count).mean(axis=0)}))
+        observation_frame = native(dict({name: original[:, i] for i, name in enumerate(names)},
+            _yhat_=original.sum(axis=1), _label_=['model'] * observations, _ids_=np.arange(observations)))
+
+        def make():
+            value = dx.predict_explanations.CeterisParibus(variables=names, variable_splits_with_obs=False)
+            value.result = ProfileTables(cp_frames, indexes, names)
+            value.new_observation = ObservationTable(observation_frame, np.arange(observations))
+            if args.family == 'ceteris-paribus':
+                return value
+            aggregate = dx.model_explanations.AggregatedProfiles()
+            aggregate.result = AggregatedPartitions(ap_frames, None, [], {}, True)
+            aggregate.mean_prediction = float(original.sum(axis=1).mean())
+            aggregate.raw_profiles = value
+            return aggregate
+
     else:
         features, paths = 500, 10
         names = [f'x{i}' for i in range(features)]
@@ -87,6 +121,10 @@ def worker(args):
             return value.plot(N=1000, show=False)
         if args.family == 'performance':
             return value.plot(geom='roc', show=False)
+        if args.family == 'ceteris-paribus':
+            return value.plot(show_observations=False, show=False)
+        if args.family == 'profiles-overlay':
+            return value.plot(geom='profiles', show=False)
         return value.plot(show=False)
 
     plot(make())
@@ -99,11 +137,16 @@ def worker(args):
     payload = figure.to_json()
     if args.figure:
         Path(args.figure).write_text(payload, encoding='utf-8')
+    compatibility_tables = [key for key in value.__dict__ if key.startswith('_compatibility_')]
+    raw_profiles = getattr(value, 'raw_profiles', None)
+    if raw_profiles is not None:
+        compatibility_tables.extend('raw_profiles.' + key for key in raw_profiles.__dict__
+                                    if key.startswith('_compatibility_'))
     return {'family': args.family, 'backend': backend, 'elapsed_seconds': elapsed,
             'rss_baseline_mib': memory.baseline / 2**20, 'rss_peak_mib': memory.peak / 2**20,
             'rss_increase_mib': (memory.peak - memory.baseline) / 2**20,
             'figure_sha256': hashlib.sha256(payload.encode()).hexdigest(),
-            'materialized_compatibility_tables': sorted(key for key in value.__dict__ if key.startswith('_compatibility_')),
+            'materialized_compatibility_tables': sorted(compatibility_tables),
             'source': source_identity(dx), 'python': sys.version,
             'versions': {'pandas': pd.__version__, 'polars': pl.__version__, 'pyarrow': pa.__version__, 'narwhals': narwhals.__version__}}
 
@@ -140,6 +183,7 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--root')
     parser.add_argument('--family')
+    parser.add_argument('--families', nargs='+', default=['importance', 'diagnostics', 'performance', 'shap'])
     parser.add_argument('--backend')
     parser.add_argument('--figure')
     args = parser.parse_args()
@@ -155,7 +199,7 @@ def main():
               'reference_revision': args.reference_revision, 'current_revision': args.current_revision,
               'threads': {'polars': os.environ.get('POLARS_MAX_THREADS'), 'blas': os.environ.get('OPENBLAS_NUM_THREADS')},
               'trials': [], 'summaries': [], 'figure_parity': []}
-    for family in ['importance', 'diagnostics', 'performance', 'shap']:
+    for family in args.families:
         for backend in ['pandas', 'polars', 'pyarrow']:
             for trial in range(args.trials):
                 for version in (['reference', 'current'] if trial % 2 == 0 else ['current', 'reference']):

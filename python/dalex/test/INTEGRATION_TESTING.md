@@ -83,7 +83,7 @@ pandas/Polars/Arrow at 1e-12, and checks edited views, mixed feature metadata, l
 integers, positional sampling and unequal/small lift datasets. KernelExplainer's
 upstream local closure is not claimed to be pickleable.
 
-`ci/compare_plots.py` independently compares 53 complete figure payloads with the
+`ci/compare_plots.py` independently compares 132 complete figure payloads with the
 pinned, unmodified upstream pandas implementation. This runs in the required
 upstream-compatibility job; test equality covers layout and hover text as well as
 numerical traces. It complements the existing 27 explanation-output comparisons.
@@ -94,6 +94,16 @@ numerical traces. It complements the existing 27 explanation-output comparisons.
 accumulated line/bar figures, multiple models, categorical profiles, grouping,
 mutable pandas views, exact large integer axes, missing/nullable numeric groups, nanosecond/timezone captions and native
 fit-to-plot construction guards. The pandas-prepared raw CP overlay is exercised
-for compatibility but excluded from the native construction guarantee.
+for compatibility and is now covered by the CP native construction guarantee.
 `ci/compare_plots.py` now also compares 30 profile figures with unchanged upstream
-(83 complete figure comparisons overall).
+(83 comparisons before the CP follow-up; 132 in the current harness).
+
+## CP plotting and publication dtypes
+
+`test_native_cp_plotting.py` adds 91 cases covering complete native/published-view
+figure equality, edited result/observation indexes, multiple feature schemas,
+exact UInt64 marker membership, nanosecond/timezone/duration/date captions,
+nullable and Arrow dtype publication, and strict native fit-to-plot guards.
+Aggregated raw-profile overlays are included. The independent upstream harness
+adds 49 CP figures, including numeric/categorical axes, multiple models and
+observations, observation markers, colors and nullable floating captions.

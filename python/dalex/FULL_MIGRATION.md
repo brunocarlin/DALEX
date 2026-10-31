@@ -151,11 +151,14 @@ The review report records the evidence for these criteria and its exact scope:
   case exposed a reset error missed by the earlier linear examples. Pandas
   callbacks also retain historical Aspect intervention-index handling.
 
-## Work remaining before claiming a full internal transition
+- Fairness text checks now select/order native score tables and calculate
+  thresholds on detached numeric vectors. Their historical pandas console
+  renderer is an explicit output boundary; caller-edited nullable dtypes retain
+  their existing decisions and formatting. Independent upstream text comparisons
+  complement native construction guards.
 
-- Fairness text-check preparation still reads a pandas result for its threshold
-  reductions. Move those calculations to the shared native score table while
-  retaining the exact historical text-formatting boundary.
+## Remaining validation and precision boundaries
+
 - Combining incompatible native partition scalar types remains a precision
   boundary. Do not silently round large integer axes to float. Existing guards
   and cross-backend tests certify covered workflows, not every possible callback,

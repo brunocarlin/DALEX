@@ -10,6 +10,8 @@ import pickle
 import subprocess
 import sys
 import json
+from contextlib import redirect_stdout
+from io import StringIO
 
 
 def indexed_predict(model, frame):
@@ -129,6 +131,27 @@ def capture(root):
                                 model_type='regression', verbose=False, label='indexed')
         save(f'indexed-public-aspect-{kind}', dx.Aspect(indexed).predict_parts(
             observation, variable_groups=groups, type=kind, N=20, B=3, random_state=42).result)
+    from dalex.fairness import GroupFairnessClassification, GroupFairnessRegression
+    protected = np.tile(['c', 'a', 'b', 'a'], 8)
+    for regression in [False, True]:
+        for edit in ['none', 'nan', 'nullable', 'duplicate']:
+            value = (GroupFairnessRegression(y, exp.y_hat, protected, 'a', 'model', verbose=False) if regression else
+                     GroupFairnessClassification((y > np.median(y)).astype(int),
+                         1 / (1 + np.exp(-exp.y_hat)), protected, 'a', 'model', verbose=False))
+            metric = 'independence' if regression else 'TPR'
+            if edit != 'none':
+                value.result.index.name = 'edited-group'
+                if edit == 'nan':
+                    value.result.loc['c', metric] = np.nan
+                elif edit == 'nullable':
+                    value.result[metric] = value.result[metric].astype('Float64')
+                    value.result.loc['c', metric] = pd.NA
+                else:
+                    value.result = pd.concat([value.result.iloc[::-1], value.result.loc[['c']]])
+            buffer = StringIO()
+            with redirect_stdout(buffer):
+                value.fairness_check(epsilon=.85, verbose=True)
+            save(f'fairness-console-{regression}-{edit}', buffer.getvalue())
     return result
 
 

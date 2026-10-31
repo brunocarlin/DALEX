@@ -8,6 +8,7 @@ import numpy as np
 import narwhals.stable.v2 as nw
 from narwhals.dependencies import get_pandas
 from ..._explanation import IndexedTable
+from ..._dataframe import column_values
 from ...predict_explanations._ceteris_paribus._table import concat_compatible, export_frame
 
 
@@ -100,6 +101,38 @@ def _window(frame, keys, operation):
     return frame.with_columns(nw.new_series('_yhat_', output, backend=nw.get_native_namespace(frame)))
 
 
+def _numeric_weights(frame, kind, span):
+    """Detached float vectors implement the Gaussian numerical boundary.
+
+    Typed keys remain in the dataframe. Large integer distances still use exact
+    subtraction; no integer feature or group key is narrowed to enter statistics.
+    """
+    large = _large_integer(frame, '_x_') or _large_integer(frame, '_original_')
+    if large:
+        weights = np.asarray(_integer_weights(frame, span).to_numpy(), dtype=float)
+    else:
+        grid = np.asarray(column_values(frame.to_native(), '_x_', preserve_nulls=True), dtype=float)
+        original = np.asarray(column_values(frame.to_native(), '_original_', preserve_nulls=True), dtype=float)
+        known = grid[~np.isnan(grid)] if np.isnan(grid).any() else grid
+        width = known.max() - known.min() if len(known) else 1.
+        if width == 0:
+            width = 1.
+        with np.errstate(invalid='ignore', divide='ignore', over='ignore', under='ignore'):
+            weights = np.exp(-1 * (((original - grid) / width) / span)**2 / 2) / np.sqrt(2 * np.pi) / span
+    if kind == 'conditional' and '_x_kind_' in frame.columns:
+        original_kind = np.asarray(frame['_original_kind_'].to_list(), dtype=object)
+        grid_kind = np.asarray(frame['_x_kind_'].to_list(), dtype=object)
+        original_missing, grid_missing = set(original_kind) - {'value'}, set(grid_kind) - {'value'}
+        if len(original_missing) == len(grid_missing) == 1:
+            original_kind = np.where(original_kind != 'value', next(iter(grid_missing)), original_kind)
+        weights[np.isnan(weights)] = 0.
+        weights = np.where(grid_kind != 'value', (grid_kind == original_kind).astype(float), weights)
+    elif kind == 'conditional' and not large and np.isnan(grid).any():
+        weights[np.isnan(weights)] = 0.
+        weights[np.isnan(grid) & np.isnan(original)] = 1.
+    return weights
+
+
 def reduce_profiles(data, kind, groups=(), *, span=.25, partition_keys=()):
     """Reduce one variable/model partition; retain typed group memberships.
 
@@ -116,45 +149,30 @@ def reduce_profiles(data, kind, groups=(), *, span=.25, partition_keys=()):
     keys = [*partition_keys, '_x_', *(['_x_kind_'] if '_x_kind_' in frame.columns else []), *groups]
     numeric = frame.schema['_x_'].is_numeric() or frame.schema['_x_'] == nw.Boolean
     if kind == 'partial':
-        frame = frame.with_columns(_non_nan(nw.col('_yhat_')).cast(frame.schema['_yhat_']).alias('_yhat_'))
+        if not frame.schema['_yhat_'].is_float() or frame['_yhat_'].is_nan().any():
+            frame = frame.with_columns(_non_nan(nw.col('_yhat_')).cast(frame.schema['_yhat_']).alias('_yhat_'))
         return _ordered_aggregate(frame, keys, [nw.col('_yhat_').mean()]).to_native()
     if numeric:
         if kind == 'accumulated' and (frame['_x_'].null_count() or frame.schema['_x_'].is_float() and frame['_x_'].is_nan().any()):
             raise ValueError('Accumulated effects cannot order a missing value in a numeric grid')
-        large = _large_integer(frame, '_x_') or _large_integer(frame, '_original_')
-        if large:
-            frame = frame.with_columns(_integer_weights(frame, span))
-            weights = _non_nan(nw.col('__weight__')).cast(nw.Float64)
-        else:
-            grid = _non_nan(nw.col('_x_').cast(nw.Float64)).cast(nw.Float64)
-            width = frame.select(grid.max() - grid.min()).item()
-            if width == 0 or width is None:
-                width = 1.
-            original = _non_nan(nw.col('_original_').cast(nw.Float64)).cast(nw.Float64)
-            weights = (-1 * (((original - grid) / width) / span) ** 2 / 2).exp() / np.sqrt(2 * np.pi) / span
-        if kind == 'conditional' and '_x_kind_' in frame.columns:
-            original_missing = set(frame['_original_kind_'].to_list()) - {'value'}
-            grid_missing = set(frame['_x_kind_'].to_list()) - {'value'}
-            original_kind = nw.col('_original_kind_')
-            # A pandas-origin grid commonly spells a native null as np.nan.
-            # Preserve that existing workflow when there is only one missing
-            # state on each side, while keeping true null/NaN bins distinct.
-            if len(original_missing) == len(grid_missing) == 1:
-                original_kind = nw.when(original_kind != 'value').then(
-                    nw.lit(next(iter(grid_missing)))).otherwise(original_kind)
-            weights = nw.when(nw.col('_x_kind_') != 'value').then(
-                (nw.col('_x_kind_') == original_kind).cast(nw.Float64)).otherwise(weights.fill_null(0.))
-        elif not large:
-            if kind == 'conditional' and frame.select(grid.is_null().any()).item():
-                weights = nw.when(original.is_null() & grid.is_null()).then(1.).otherwise(weights.fill_null(0.))
+        weights = _numeric_weights(frame, kind, span)
     else:
-        weights = nw.col('_original_') == nw.col('_x_')
-    frame = frame.with_columns(weights.cast(nw.Float64).alias('__weight__'))
+        weight_frame = frame.select((nw.col('_original_') == nw.col('_x_')).cast(nw.Float64).alias('__weight__'))
+        weights = np.asarray(column_values(weight_frame.to_native(), '__weight__', preserve_nulls=True), dtype=float)
+    weights = np.asarray(weights, dtype=float).copy()
+    weights[np.isnan(weights)] = 0.
     if kind == 'accumulated':
         frame = _window(frame, ['_ids_'], 'diff')
-        frame = frame.with_columns(_non_nan(nw.col('_yhat_')).fill_null(0.).cast(nw.Float64).alias('_yhat_'))
-    products = _non_nan(nw.col('_yhat_') * nw.col('__weight__')).cast(nw.Float64)
-    frame = frame.with_columns(products.alias('__product__'))
+    predictions = np.asarray(column_values(frame.to_native(), '_yhat_', preserve_nulls=True), dtype=float)
+    with np.errstate(invalid='ignore'):
+        products = predictions * weights
+    # NaN products contributed zero to the historical skip-missing sums. Keeping
+    # this numerical normalization outside expressions avoids repeated full-table
+    # clones while leaving every grouping key and its dtype in native storage.
+    products[np.isnan(products)] = 0.
+    backend = nw.get_native_namespace(frame)
+    frame = frame.with_columns(nw.new_series('__weight__', weights, backend=backend),
+                                nw.new_series('__product__', products, backend=backend))
     result = _ordered_aggregate(frame, keys, [nw.col('__product__').sum().alias('__numerator__'),
                                              nw.col('__weight__').sum().alias('__denominator__')])
     divisor = nw.when(nw.col('__denominator__') != 0).then(nw.col('__denominator__')).otherwise(None)

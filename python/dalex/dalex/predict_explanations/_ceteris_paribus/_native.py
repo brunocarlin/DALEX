@@ -58,14 +58,15 @@ def single_profile(predict, model, data, variable, splits, label=None):
         replacements = np.tile(splits, data.shape[0])
         working = set_columns(expanded, {variable: replacements})
     prediction = predict(model, working)
-    result = as_eager_dataframe(working).with_columns(
+    metadata = [
         original,
         nw.new_series('_yhat_', prediction, backend=namespace),
         nw.lit(variable).alias('_vname_'),
         nw.new_series('_ids_', ids, backend=namespace),
-    )
+    ]
     if label is not None:
-        result = result.with_columns(nw.lit(label).alias('_label_'))
+        metadata.append(nw.lit(label).alias('_label_'))
+    result = as_eager_dataframe(working).with_columns(metadata)
     return result.to_native(), index
 
 

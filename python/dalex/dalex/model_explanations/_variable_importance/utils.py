@@ -44,12 +44,21 @@ def calculate_variable_importance(explainer,
     fields = names if portable_names else [f'__loss_{i}' for i in range(len(names))]
     raw = nw.from_dict({field: [record[name] for record in result]
                         for field, name in zip(fields, names)}, backend=namespace)
-    # Express NaN normalization using the declared stable-v2 minimum as well.
-    means = raw.select([
-        nw.when(nw.col(field).cast(nw.Float64).is_nan()).then(None)
-        .otherwise(nw.col(field).cast(nw.Float64)).mean().alias(field)
-        for field in fields
-    ]).to_numpy()[0]
+    clean_float = (all(dtype == nw.Float64 for dtype in raw.schema.values()) and
+                   all(isinstance(value, (float, np.floating)) and not np.isnan(value)
+                       for record in result for value in record.values()))
+    if clean_float:
+        # Standard losses already return float64. Avoid rebuilding a separate
+        # conditional/cast expression for every feature when no NaNs need
+        # normalization; the same native mean kernel performs the reduction.
+        means = raw.select(nw.all().mean()).to_numpy()[0]
+    else:
+        # Retain the declared stable-v2 minimum and non-float/NaN semantics.
+        means = raw.select([
+            nw.when(nw.col(field).cast(nw.Float64).is_nan()).then(None)
+            .otherwise(nw.col(field).cast(nw.Float64)).mean().alias(field)
+            for field in fields
+        ]).to_numpy()[0]
     order = np.argsort(means, kind='quicksort')
     losses = means[order]
     full_model = means[names.index('_full_model_')]

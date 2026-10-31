@@ -288,21 +288,54 @@ def fairness_check_metrics():
     return ["TPR", "ACC", "PPV", "FPR", "STP"]
 
 
+def _fairness_check_table(obj, subgroups, metrics):
+    from ._plotting import table_frame
+    frame = table_frame(obj).with_row_index('__source_row__')
+    missing_groups = set(subgroups) - set(frame['subgroup'].to_list())
+    missing_metrics = set(metrics) - set(frame.columns)
+    if missing_groups or missing_metrics:
+        raise KeyError(list(missing_groups | missing_metrics))
+    if not len(subgroups):
+        return frame.head(0).select('subgroup', *metrics)
+    order = nw.from_dict({'subgroup': list(subgroups), '__check_order__': np.arange(len(subgroups))},
+                         backend=nw.get_native_namespace(frame))
+    return (order.join(frame, on='subgroup', how='left')
+            .sort(['__check_order__', '__source_row__']).select('subgroup', *metrics))
+
+
+def _fairness_check_display(obj, frame, subgroups, metrics):
+    """The historical pandas console renderer is an explicit output boundary."""
+    from ..._dataframe import to_pandas
+    value = obj.__dict__.get('_compatibility_result', obj.__dict__.get('result'))
+    if isinstance(value, pd.DataFrame):
+        # Caller edits retain their exact extension dtypes and index name.
+        return value.loc[subgroups, metrics]
+    result = to_pandas(frame.to_native()).set_index('subgroup')
+    result.index.name = getattr(value, 'index_name', None)
+    return result
+
+
 def universal_fairness_check(self, epsilon, verbose, num_for_not_fair, num_for_no_decision, metrics):
     if epsilon is None:
         epsilon = self.epsilon
     else:
         epsilon = checks.check_epsilon(epsilon)
 
-    metric_ratios = self.result
-
     subgroups = np.unique(self.protected)
     subgroups_without_privileged = subgroups[subgroups != self.privileged]
-    metric_ratios = metric_ratios.loc[subgroups_without_privileged, metrics]
-
-    metrics_exceeded = ((metric_ratios > 1 / epsilon) | (epsilon > metric_ratios)).apply(sum, 0)
-
-    names_of_exceeded_metrics = list(metrics_exceeded.index[metrics_exceeded != 0])
+    frame = _fairness_check_table(self, subgroups_without_privileged, metrics)
+    values = np.asarray(frame.select(metrics).to_numpy(), dtype=float)
+    exceeded = ((values > 1 / epsilon) | (epsilon > values)).any(axis=0)
+    legacy = self.__dict__.get('_compatibility_result', self.__dict__.get('result'))
+    if isinstance(legacy, pd.DataFrame):
+        # Python sum over nullable pandas comparisons historically propagates
+        # pd.NA, and its object-result != 0 selection flags that metric. Preserve
+        # those explicit legacy edits without coalescing NA and floating NaN.
+        selected = legacy.loc[subgroups_without_privileged, metrics]
+        for index, metric in enumerate(metrics):
+            if isinstance(selected[metric].dtype, pd.api.extensions.ExtensionDtype):
+                exceeded[index] |= any(value is pd.NA for value in selected[metric].array)
+    names_of_exceeded_metrics = [metric for metric, flag in zip(metrics, exceeded) if flag]
     if len(names_of_exceeded_metrics) >= num_for_not_fair:
         print(f'Bias detected in {len(names_of_exceeded_metrics)} metrics: {", ".join(names_of_exceeded_metrics)}')
     elif len(names_of_exceeded_metrics) == num_for_no_decision:
@@ -325,8 +358,8 @@ def universal_fairness_check(self, epsilon, verbose, num_for_not_fair, num_for_n
     print(
         f'\nRatios of metrics, based on \'{self.privileged}\'. Parameter \'epsilon\' was set to {epsilon}'
         f' and therefore metrics should be within ({epsilon}, {round(1 / epsilon, 3)})')
-    print(metric_ratios.to_string())
-    if pd.isna(metric_ratios).sum().sum() > 0:
+    print(_fairness_check_display(self, frame, subgroups_without_privileged, metrics).to_string())
+    if np.isnan(values).any():
         helper.verbose_cat(
             '\nWarning!\nTake into consideration that NaN\'s are present, consider checking \'metric_scores\' '
             'plot to see the difference', verbose=verbose)

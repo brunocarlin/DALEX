@@ -25,7 +25,7 @@ Speculative future-major pandas/Narwhals runtime caps have been removed. Minimum
 
 ## CI and remaining work
 
-The preceding [Aspect checkpoint](ASPECT_PLOTTING_FOLLOWUP.md) passed all 21 CI jobs, but that did not expose the nonlinear RNG error. This source adds a required private-contract comparison and a pandas-only installed-wheel job; its **22-job CI result must be recorded separately** after push. Local evidence is not reported as a completed CI run.
+The preceding [Aspect checkpoint](ASPECT_PLOTTING_FOLLOWUP.md) passed all 21 CI jobs, but that did not expose the nonlinear RNG error. Consolidation [fdb23b0](https://github.com/brunocarlin/DALEX/commit/fdb23b037e088bb6b9b6e72b2977cce6a04831ae) passed **[all 22 exact-commit CI jobs](https://github.com/brunocarlin/DALEX/actions/runs/41166813766)**. Downloaded artifacts verify 15 full suites (1,778/18 each), eight PyTorch cases, eight TensorFlow cases, 18 PPS cases, 29 numerical outputs (maximum error 8.88e-16), 106 helper outputs, 174 figures and 15 upstream pickle objects. The installed-wheel job verifies 12 pandas-only families with the same source fingerprint. Actual 3.14t GIL state is disabled after all 21 imports; unforced SHAP enables it. [CI artifact audit](shared-kernel-consolidation/ci-validation.json).
 
 Fairness text-check preparation still performs pandas threshold reductions. Existing pandas importance/PDP/conditional regressions and wide-frame Polars RSS remain to profile and remeasure. No end-to-end performance improvement is claimed for this consolidation. `bench_source_comparison.py` supports alternating immutable sources, identical saved models/data hashes, per-trial numerical checks and sampled RSS; the forthcoming measurements must identify their own implementation.
 

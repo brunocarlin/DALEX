@@ -139,20 +139,25 @@ and default-restoration behavior.
 
 ## Compatibility change for maintainers
 
-This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2,<3`.
+This contribution proposes **Python >=3.10**, dropping 3.9, with `narwhals>=2`.
 Python 3.14 is the primary development and benchmark version. CI tests 3.10–3.14
 on Linux and macOS, Windows 3.14, plus required Linux 3.14t with `PYTHON_GIL=0`.
 The regular matrix retains pandas 2, with an additional Python 3.14/pandas 3 job.
 Scientific extensions require wheels in CI so unavailable free-threaded wheels
 produce a clear dependency-install failure instead of an unbounded source build. Maintainers should explicitly
 approve the minimum-version change before release. Pandas remains required at
-`>=1.5.3,<4` for compatible public tables and plotting. Pandas 3 compatibility fixes include
+`>=1.5.3` for compatible public tables and plotting. Pandas 3 compatibility fixes include
 copy-on-write array mutation, fairness table reshaping/string group detection and
 breakdown plot string labels. Minimum-pandas CI retains 1.5.3 coverage.
-The `<4` cap is a precautionary major-version policy, not evidence that pandas 4
-breaks DALEX. No pandas 4 release/prerelease/nightly was available when checked
-on 2026-10-30. A separate forward-compatibility run tests the available pandas
-3.2 development wheel; that does not certify pandas 4 support.
+Speculative future-major pandas and Narwhals caps have been removed. Narwhals
+[maintains stable.v2 across future releases](https://narwhals-dev.github.io/narwhals/backcompat/),
+subject to its documented bug-fix/backend/Python-version exceptions. The Python
+Packaging User Guide recommends [known dependency bounds](https://packaging.python.org/en/latest/discussions/install-requires-vs-requirements/),
+which does not establish a reason to reject an unpublished pandas major version.
+No pandas 4 release was available when checked on 2026-10-30. Tested stacks are
+listed in the validation reports, including stable pandas 3.1 and the available
+3.2 development wheel; neither certifies an unreleased version. CI's pandas 2/3
+selectors choose representative major-version jobs rather than package bounds.
 
 No new mandatory Polars dependency is imposed on pandas-only users. Install `dalex[polars]`
 (Polars and PyArrow for pandas result materialization) for native Polars inputs.

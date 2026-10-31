@@ -53,8 +53,56 @@ def category_codes(series):
     return codes, len(unique)
 
 
+def cramers_value(a, na, b, nb, n):
+    from scipy.stats import chi2_contingency
+    valid = (a >= 0) & (b >= 0)
+    row_counts = np.bincount(a[valid], minlength=na)
+    col_counts = np.bincount(b[valid], minlength=nb)
+    r, c = np.count_nonzero(row_counts), np.count_nonzero(col_counts)
+    if min(r, c) <= 1 or n <= 1:
+        return np.nan
+    if na * nb <= 1_000_000:
+        counts = np.zeros((na, nb), dtype=int)
+        np.add.at(counts, (a[valid], b[valid]), 1)
+        counts = counts[row_counts > 0][:, col_counts > 0]
+        chi = chi2_contingency(counts)[0]
+    else:
+        # Include zero cells without allocating a potentially huge crosstab.
+        pairs, counts = np.unique(np.column_stack((a[valid], b[valid])), axis=0, return_counts=True)
+        expected = (row_counts[pairs[:, 0]].astype(float) * col_counts[pairs[:, 1]]) / valid.sum()
+        chi = max(0., np.sum(counts.astype(float)**2 / expected) - valid.sum())
+    phi = max(0., chi / n - (r - 1) * (c - 1) / (n - 1))
+    denominator = min(r - (r - 1)**2 / (n - 1), c - (c - 1)**2 / (n - 1)) - 1
+    return np.sqrt(phi / denominator) if denominator > 0 else np.nan
+
+
+def category_sample_count(series, count):
+    # Retain the legacy pandas default for declared but unobserved categories.
+    # This reads dtype metadata without constructing any pandas objects.
+    from narwhals.dependencies import get_pandas
+    pandas = get_pandas()
+    if (isinstance(series.dtype, (nw.Categorical, nw.Enum)) and pandas is not None
+            and int(pandas.__version__.split('.')[0]) < 3):
+        return max(count, len(categorical_levels(series)))
+    return count
+
+
+def eta_value(membership, count, vector, n):
+    from scipy.stats import kruskal
+    if count < 2 or n == count:
+        return np.nan
+    samples = [vector[membership == k] for k in range(count)]
+    try:
+        statistic = kruskal(*samples, nan_policy='omit').statistic
+    except ValueError as exc:
+        if 'All numbers are identical' not in str(exc):
+            raise
+        statistic = np.nan
+    return (statistic - count + 1) / (n - count)
+
+
 def associations(data, method):
-    from scipy.stats import chi2_contingency, kruskal, spearmanr, kendalltau
+    from scipy.stats import spearmanr, kendalltau
     frame = nw.from_native(data, eager_only=True)
     numeric = [name for name, dtype in frame.schema.items()
                if dtype.is_numeric() or dtype == nw.Boolean]
@@ -90,50 +138,12 @@ def associations(data, method):
                 else:
                     a, na = codes[left]
                     b, nb = codes[right]
-                    valid = (a >= 0) & (b >= 0)
-                    row_counts = np.bincount(a[valid], minlength=na)
-                    col_counts = np.bincount(b[valid], minlength=nb)
-                    r, c = np.count_nonzero(row_counts), np.count_nonzero(col_counts)
-                    if min(r, c) <= 1 or n <= 1:
-                        value = np.nan
-                    else:
-                        if na * nb <= 1_000_000:
-                            counts = np.zeros((na, nb), dtype=int)
-                            np.add.at(counts, (a[valid], b[valid]), 1)
-                            counts = counts[row_counts > 0][:, col_counts > 0]
-                            chi = chi2_contingency(counts)[0]
-                        else:
-                            # sum(O^2/E) - total includes the zero cells without
-                            # allocating a potentially enormous dense crosstab.
-                            pairs, counts = np.unique(np.column_stack((a[valid], b[valid])), axis=0, return_counts=True)
-                            expected = (row_counts[pairs[:, 0]].astype(float) * col_counts[pairs[:, 1]]) / valid.sum()
-                            chi = max(0., np.sum(counts.astype(float)**2 / expected) - valid.sum())
-                        phi = max(0., chi / n - (r - 1) * (c - 1) / (n - 1))
-                        denominator = min(r - (r - 1)**2 / (n - 1), c - (c - 1)**2 / (n - 1)) - 1
-                        value = np.sqrt(phi / denominator) if denominator > 0 else np.nan
+                    value = cramers_value(a, na, b, nb, n)
             else:
                 category, number = (left, right) if left in codes else (right, left)
                 membership, count = codes[category]
-                # Preserve the historical pandas groupby default for declared
-                # but unobserved categorical levels (changed in pandas 3).
-                # This reads category metadata; it does not build pandas data.
-                from narwhals.dependencies import get_pandas
-                pandas = get_pandas()
-                dtype = frame.schema[category]
-                if (isinstance(dtype, (nw.Categorical, nw.Enum)) and pandas is not None
-                        and int(pandas.__version__.split('.')[0]) < 3):
-                    count = max(count, len(categorical_levels(frame[category])))
-                samples = [vectors[number][membership == k] for k in range(count)]
-                if count < 2 or n == count:
-                    value = np.nan
-                else:
-                    try:
-                        statistic = kruskal(*samples, nan_policy='omit').statistic
-                    except ValueError as exc:
-                        if 'All numbers are identical' not in str(exc):
-                            raise
-                        statistic = np.nan
-                    value = (statistic - count + 1) / (n - count)
+                count = category_sample_count(frame[category], count)
+                value = eta_value(membership, count, vectors[number], n)
             result[i, j] = result[j, i] = np.clip(value, 0., 1.)
     return matrix_table(result, names, data)
 

@@ -14,21 +14,30 @@ def descending(values):
     return np.r_[valid[order], np.flatnonzero(np.isnan(values))]
 
 
-def path(predict, sample, cells, groups, rng):
-    order = rng.choice(len(groups), len(groups), replace=False)
+def path_contributions(predict, sample, cells, groups, order, *, reset_index=False):
+    """Apply an explicit group path and return its ordered numeric changes."""
     data = copy_for_edit(sample)
+    if reset_index:
+        from narwhals.dependencies import is_pandas_dataframe
+        if is_pandas_dataframe(data):
+            data = data.reset_index(drop=True)
     predictions = [predict(data).mean()]
     for i in order:
         for name in groups[i]:
             data = set_columns(data, {name: cells[name]}, scalar=True, copy=False)
         predictions.append(predict(data).mean())
+    return np.diff(predictions)
+
+
+def path(predict, sample, cells, groups, rng):
+    order = rng.choice(len(groups), len(groups), replace=False)
     values = np.empty(len(groups))
-    values[order] = np.diff(predictions)
+    values[order] = path_contributions(predict, sample, cells, groups, order, reset_index=True)
     return values
 
 
 def calculate(explainer, observation, groups, *, kind, N, n_aspects=None,
-              sample_method='default', f=2, B=25, processes=1, random_state=None):
+              sample_method='default', f=2, B=25, processes=1, random_state=None, rng=None):
     cells = observation_values(observation)
     names = list(groups)
     variables = list(groups.values())
@@ -46,6 +55,12 @@ def calculate(explainer, observation, groups, *, kind, N, n_aspects=None,
                 values = replacements.get(name, column_values(sample, name, preserve_nulls=True))
                 replacements[name] = np.where(matrix[:, i] == 1, cells[name], values)
         changed = set_columns(copy_for_edit(sample), replacements, copy=False)
+        from narwhals.dependencies import is_pandas_dataframe
+        if is_pandas_dataframe(changed):
+            # The original local surrogate reset its intervention index while
+            # retaining sampled labels on the reference batch. Index-sensitive
+            # pandas callbacks rely on that existing public contract.
+            changed = changed.reset_index(drop=True)
         response = explainer.predict(changed) - explainer.predict(sample)
         if n_aspects is None:
             from sklearn.linear_model import LinearRegression
@@ -59,7 +74,7 @@ def calculate(explainer, observation, groups, *, kind, N, n_aspects=None,
         if B < 1:
             raise ValueError('B must be positive')
         if processes == 1:
-            rng = get_random_state(random_state)
+            rng = get_random_state(random_state) if rng is None else rng
             draws = [path(explainer.predict, sample, cells, variables, rng) for _ in range(B)]
         else:
             generators = [np.random.default_rng(seed) for seed in np.random.SeedSequence(random_state).spawn(B)]

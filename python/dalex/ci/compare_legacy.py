@@ -57,6 +57,10 @@ def capture(root):
     if not hasattr(np, 'in1d'):
         np.in1d = np.isin
     aspect = dx.Aspect(explainer)
+    nonlinear_aspect = dx.Aspect(kernel_exp)
+    for kind in ('default', 'shap'):
+        table('nonlinear_predict_triplot_' + kind, nonlinear_aspect.predict_triplot(
+            kernel_data.iloc[[0]], type=kind, N=20, B=3, random_state=42).result)
     for kind in ('default', 'shap'):
         table('aspect_'+kind, aspect.predict_parts(
             frame.iloc[[2]], type=kind, N=20, B=3, random_state=42,
@@ -105,7 +109,10 @@ def main():
             first,second=np.asarray(a[key]),np.asarray(b[key])
         np.testing.assert_allclose(first,second,rtol=1e-12,atol=1e-12,equal_nan=True,err_msg=key)
         errors[key]=float(np.nanmax(np.abs(first-second)))
-    report={'python':sys.version,'reference_root':str(reference),'numeric_outputs_compared':len(errors),
+    import dalex as dx
+    sys.path.insert(0, str(current / 'benchmarks'))
+    from _benchmark_utils import source_identity
+    report={'python':sys.version,'reference_root':str(reference),'current_source':source_identity(dx),'numeric_outputs_compared':len(errors),
             'tolerance':{'rtol':1e-12,'atol':1e-12},'max_absolute_error_by_output':errors,'passed':True}
     Path(args.output).write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))

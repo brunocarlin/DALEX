@@ -1,124 +1,43 @@
-from ..._dataframe import column_names
-import multiprocessing as mp
-from numpy.random import SeedSequence, default_rng
-
+"""Legacy pandas-returning adapters over shared contribution kernels."""
 import numpy as np
-import pandas as pd
-from ..._dataframe import set_columns, to_pandas, observation_values, copy_for_edit
-from ..._random import get_random_state
+import narwhals.stable.v2 as nw
+from ..._dataframe import (as_eager_dataframe, column_names, observation_values,
+                           observation_display_values, to_pandas)
 
 
 def iterate_paths(predict_function, model, data, label, new_observation, p, b, rng, values=None):
     random_path = rng.choice(p, p, replace=False)
-    return get_single_random_path(predict_function, model, data, label, new_observation, random_path, b, values)
+    return get_single_random_path(predict_function, model, data, label,
+                                   new_observation, random_path, b, values)
 
 
-def shap(explainer,
-         new_observation,
-         path,
-         keep_distributions,
-         B,
-         processes,
-         random_state):
-    # Now we know the path, so we can calculate contributions
-    # set variable indicators
-    # start random path
-    native_observation = new_observation
-    new_observation = to_pandas(new_observation)
-    values = observation_values(native_observation, new_observation)
-    p = new_observation.shape[1]
-
-    if processes == 1:
-        rng = get_random_state(random_state)
-        result_list = [
-            iterate_paths(explainer.predict_function, explainer.model, explainer.data,
-                          explainer.label, new_observation, p, b + 1, rng, values)
-            for b in range(B)]
-    else:
-        # Create number generator for each iteration
-        ss = SeedSequence(random_state)
-        generators = [default_rng(s) for s in ss.spawn(B)]
-        with mp.get_context('spawn').Pool(processes) as pool:
-            result_list = pool.starmap_async(iterate_paths,
-                                             [(explainer.predict_function, explainer.model, explainer.data,
-                                               explainer.label, new_observation, p, b + 1, generators[b], values) for b in range(B)]).get()
-
-    result = pd.concat(result_list)
-
-    if path is not None:
-        if isinstance(path, str) and path == 'average':
-            # average over all of the paths
-            variable_average = result.pivot(index='variable', columns='B', values='contribution').mean(axis=1)
-            # sort pd.Series by index of abs-sorted pd.Series
-            variable_average_sorted = \
-                variable_average.reindex(variable_average.abs().sort_values(ascending=False).index)
-            # make the final result - sort and fill with values
-            result_average = result_list[0].set_index('variable').reindex(variable_average_sorted.index).reset_index()
-
-            result_average = result_average.assign(contribution=variable_average_sorted.values,
-                                                   B=0,
-                                                   sign=np.sign(variable_average_sorted.values))
-
-            result = pd.concat((result, result_average))
-        else:
-            tmp = get_single_random_path(explainer.predict_function, explainer.model, explainer.data, explainer.label,
-                                         new_observation, path, 0, values)
-
-            result = pd.concat((result, tmp))
-
-    if keep_distributions:
-        yhats_distributions = calculate_yhats_distributions(explainer)
-    else:
-        yhats_distributions = None
-
-    target_yhat = explainer.predict(native_observation)[0]  # only one new_observation allowed
-    data_yhat = explainer.predict(explainer.data)
-    baseline_yhat = data_yhat.mean()
-
-    return result, target_yhat, baseline_yhat, yhats_distributions
+def shap(explainer, new_observation, path, keep_distributions, B, processes, random_state):
+    from .._native_contributions import shap as native_shap
+    result, target, baseline, distribution = native_shap(explainer, new_observation,
+        path, keep_distributions, B, processes, random_state)
+    return (result._dalex_pandas_view(), target, baseline,
+            to_pandas(distribution) if distribution is not None else None)
 
 
 def calculate_yhats_distributions(explainer):
-    data_yhat = explainer.predict(explainer.data)
-
-    return pd.DataFrame({
-        'variable_name': 'all_data',
-        'variable': 'all data',
-        'id': np.arange(explainer.data.shape[0]),
-        'prediction': data_yhat,
-        'label': explainer.label
-    })
+    from .._native_contributions import _distribution
+    namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data))
+    return to_pandas(_distribution('all_data', 'all data', explainer.predict(explainer.data),
+                                   explainer.label, namespace))
 
 
 def get_single_random_path(predict, model, data, label, new_observation, random_path, b, values=None):
-    native_observation = new_observation
-    if not isinstance(new_observation, pd.DataFrame):
-        new_observation = to_pandas(new_observation)
-    values = observation_values(native_observation, new_observation) if values is None else values
-    names = np.asarray(column_names(data))
-    current_data = copy_for_edit(data)
-    yhats = np.empty(len(random_path) + 1)
-    yhats[0] = predict(model, current_data).mean()
-    for i, candidate in enumerate(random_path):
-        current_data = set_columns(current_data, {names[candidate]: values[names[candidate]]}, scalar=True, copy=False)
-        yhats[i + 1] = predict(model, current_data).mean()
-
-    diffs = np.diff(yhats)
-
-    variable_names = names[random_path]
-
-    new_observation_f = new_observation.loc[:, variable_names] \
-        .apply(lambda x: nice_format(x.iloc[0]))
-
-    return pd.DataFrame({
-        'variable': [' = '.join(pair) for pair in zip(variable_names, new_observation_f)],
-        'contribution': diffs,
-        'variable_name': variable_names,
-        'variable_value': new_observation.loc[:, variable_names].values.reshape(-1, ),
-        'sign': np.sign(diffs),
-        'label': label,
-        'B': b
-    })
+    from .._native_contributions import _shap_path, ShapTable, _format
+    cells = observation_values(new_observation) if values is None else values
+    display = observation_display_values(new_observation, cells)
+    names = list(column_names(data))
+    variables = [names[int(i)] for i in random_path]
+    contributions = _shap_path(predict, model, data, names, cells, random_path)
+    namespace = nw.get_native_namespace(as_eager_dataframe(data))
+    result = nw.from_dict({'variable': [str(name) + ' = ' + _format(display[name]) for name in variables],
+        'contribution': contributions, 'variable_name': variables, 'sign': np.sign(contributions),
+        'label': [label] * len(variables), 'B': [b] * len(variables)}, backend=namespace).to_native()
+    return ShapTable(result, new_observation)._dalex_pandas_view()
 
 
 def nice_pair(df, i1, i2):

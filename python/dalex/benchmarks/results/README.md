@@ -1,13 +1,15 @@
 # Migration evidence
 
-Start with [second refinement review](ROUND2_REVIEW.md) and
-[latest benchmark tables](ROUND2_BENCHMARKS.md). They identify the tested
-implementation commits and distinguish source validation, installed-package
-validation, dependency limitations and performance measurements.
+Start with [shared-kernel consolidation](SHARED_KERNEL_CONSOLIDATION.md), then
+the source-stamped [Aspect](ASPECT_PLOTTING_FOLLOWUP.md),
+[fairness](FAIRNESS_PLOTTING_FOLLOWUP.md) and [CP](CP_PLOTTING_FOLLOWUP.md) checkpoints.
+They separate local validation, exact-commit CI, dependency limitations and
+plotting-only measurements. The [end-to-end benchmark tables](FULL_MIGRATION_BENCHMARKS.md)
+belong to source 080f946b; later plotting results do not relabel those timings.
 
 Raw JSON is generated measurement output. GitHub collapses it by default in the
 PR diff; it remains available to expand or download. Every trial and its summary
-statistics are retained. The `round2/` directory contains the latest experiments;
+statistics are retained. The `round2/` directory retains earlier experiments;
 `round2-validation.json` records source/package/CI validation. The `refinement/`
 directory retains the preceding experiments and standalone dependency probes.
 

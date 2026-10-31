@@ -17,6 +17,35 @@ defaults:
     shell: bash
 
 jobs:
+  pandas-only-package:
+    name: Installed wheel / pandas-only core / Python 3.14
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - run: |
+          python -m pip install --upgrade pip build
+          python -m build python/dalex --wheel --outdir wheelhouse
+          python -m pip install wheelhouse/*.whl
+          python -m pip check
+      - name: Validate installed package without Polars/Arrow/model extras
+        run: |
+          cd "$RUNNER_TEMP"
+          python "$GITHUB_WORKSPACE/python/dalex/ci/smoke_pandas_only.py" --assert-minimal --output "$GITHUB_WORKSPACE/pandas-only-package.json"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pandas-only-package
+          path: pandas-only-package.json
+
   upstream-compatibility:
     name: Upstream pandas numerical and pickle compatibility / Python 3.14
     runs-on: ubuntu-latest
@@ -48,6 +77,8 @@ jobs:
         run: python python/dalex/ci/check_legacy_pickles.py --reference-root legacy-reference/python/dalex --output upstream-pickle-compatibility.json
       - name: Compare complete pandas plot payloads with unmodified upstream
         run: python python/dalex/ci/compare_plots.py --reference-root legacy-reference/python/dalex --output upstream-plot-parity.json
+      - name: Compare legacy helper contracts and index-sensitive callbacks
+        run: python python/dalex/ci/compare_legacy_adapters.py --reference-root legacy-reference/python/dalex --output upstream-adapter-parity.json
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -56,6 +87,7 @@ jobs:
             upstream-parity.json
             upstream-pickle-compatibility.json
             upstream-plot-parity.json
+            upstream-adapter-parity.json
             compatibility-versions.txt
 
   test:

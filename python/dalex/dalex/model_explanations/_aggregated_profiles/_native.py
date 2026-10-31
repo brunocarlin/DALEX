@@ -100,7 +100,7 @@ def _window(frame, keys, operation):
     return frame.with_columns(nw.new_series('_yhat_', output, backend=nw.get_native_namespace(frame)))
 
 
-def reduce_profiles(data, kind, groups=(), *, span=.25):
+def reduce_profiles(data, kind, groups=(), *, span=.25, partition_keys=()):
     """Reduce one variable/model partition; retain typed group memberships.
 
     Returns a native result with ``_x_``, group columns and ``_yhat_``. Missing
@@ -113,7 +113,7 @@ def reduce_profiles(data, kind, groups=(), *, span=.25):
     if not len(frame):
         raise ValueError('Cannot aggregate an empty profile partition')
     groups = list(groups)
-    keys = ['_x_', *(['_x_kind_'] if '_x_kind_' in frame.columns else []), *groups]
+    keys = [*partition_keys, '_x_', *(['_x_kind_'] if '_x_kind_' in frame.columns else []), *groups]
     numeric = frame.schema['_x_'].is_numeric() or frame.schema['_x_'] == nw.Boolean
     if kind == 'partial':
         frame = frame.with_columns(_non_nan(nw.col('_yhat_')).cast(frame.schema['_yhat_']).alias('_yhat_'))
@@ -276,6 +276,48 @@ class AggregatedTable(IndexedTable):
             result = result.drop(columns=self.groups)
             result['_label_'] = result.loc[:, ['_label_', '_groups_']].apply(lambda row: '_'.join(row), axis=1)
         return result
+
+
+def aggregate_long_profiles(data, mean_prediction, kind, groups, center, span):
+    """Adapt an already prepared long table to the same native reductions.
+
+    This supports legacy private helpers without maintaining a second pandas
+    groupby/apply implementation. Index and group-label formatting are deferred
+    to the existing compatibility table.
+    """
+    frame = nw.from_native(data, eager_only=True)
+    groups = list(groups)
+    group_dtypes = {}
+    for group in groups:
+        dtype = frame.schema[group]
+        if isinstance(dtype, (nw.Categorical, nw.Enum)):
+            group_dtypes[group] = 'object'
+            frame = frame.with_columns(nw.col(group).cast(nw.String))
+        elif nw.get_native_namespace(frame).__name__ == 'pandas':
+            group_dtypes[group] = frame.to_native()[group].dtype
+    columns = ['_vname_', '_label_', '_x_', *groups, '_yhat_', '_ids_']
+    if kind == 'partial':
+        result = nw.from_native(reduce_profiles(frame.to_native(), kind, groups, span=span,
+            partition_keys=['_vname_', '_label_'])).with_columns(nw.lit(0).alias('_ids_'))
+        index = None
+    else:
+        partitions = []
+        for key, split in frame.group_by(['_vname_', '_label_'], drop_null_keys=True):
+            key = tuple(value.as_py() if hasattr(value, 'as_py') else value for value in key)
+            partitions.append((key, split))
+        partitions.sort(key=lambda item: tuple((isinstance(value, str), value) for value in item[0]))
+        results, index = [], []
+        for (variable, label), split in partitions:
+            reduced = nw.from_native(reduce_profiles(split.to_native(), kind, groups, span=span))
+            reduced = reduced.with_columns(nw.lit(variable).alias('_vname_'),
+                nw.lit(label).alias('_label_'), nw.lit(0).alias('_ids_'))
+            results.append(reduced.select(columns))
+            index.extend(range(len(reduced)))
+        result = nw.concat(results)
+    if kind == 'accumulated' and center:
+        average = np.nanmean(result['_yhat_'].to_numpy())
+        result = result.with_columns((nw.col('_yhat_') - average + mean_prediction).alias('_yhat_'))
+    return AggregatedTable(result.select(columns).to_native(), index, groups, group_dtypes)
 
 
 def aggregate_ceteris(profiles, variables, variable_type, kind, groups, span, center):

@@ -7,50 +7,34 @@ from . import checks
 from .. import _global_checks
 
 def calculate_cat_assoc_matrix(data, categorical_variables, n):
-    from scipy.stats import chi2_contingency
-    cat_assoc_matrix = pd.DataFrame(
-        index=categorical_variables, columns=categorical_variables, dtype=float
-    )
-    for i, variable_name_a in enumerate(categorical_variables):
-        for j, variable_name_b in enumerate(categorical_variables):
-            if i > j:
-                continue   # matrix is symmetric
-            elif i == j:
-                cramers_V = 1
-            else:
-                # calculate Cramér’s V with bias correction
-                cont_tab = pd.crosstab(data[variable_name_a], data[variable_name_b])
-                r = cont_tab.shape[0]
-                c = cont_tab.shape[1]
-                chi2_test = chi2_contingency(cont_tab)
-                phi = max(0, (chi2_test[0] / n) - (((r - 1) * (c - 1)) / (n - 1)))
-                r = r - ((r - 1) ** 2 / (n - 1))
-                c = c - ((c - 1) ** 2 / (n - 1))
-                cramers_V = np.sqrt(phi / (min(c, r) - 1))
-                cramers_V = checks.check_assoc_value(cramers_V)
-            cat_assoc_matrix.loc[variable_name_a, variable_name_b] = cramers_V
-            cat_assoc_matrix.loc[variable_name_b, variable_name_a] = cramers_V
-    return cat_assoc_matrix
+    from ._native_dependence import category_codes, cramers_value
+    import narwhals.stable.v2 as nw
+    frame = nw.from_native(data, eager_only=True)
+    codes = {name: category_codes(frame[name]) for name in categorical_variables}
+    values = np.eye(len(categorical_variables))
+    for i, left in enumerate(categorical_variables):
+        for j in range(i + 1, len(categorical_variables)):
+            right = categorical_variables[j]
+            a, na = codes[left]
+            b, nb = codes[right]
+            values[i, j] = values[j, i] = checks.check_assoc_value(cramers_value(a, na, b, nb, n))
+    return pd.DataFrame(values, index=categorical_variables, columns=categorical_variables)
 
 
 def calculate_cat_num_assoc_matrix(data, categorical_variables, numerical_variables, n):
-    from scipy.stats import kruskal
-    cat_num_assoc_matrix = pd.DataFrame(
-        index=categorical_variables, columns=numerical_variables, dtype=float
-    )
-    for cat_variable_name in categorical_variables:
-        for num_variable_name in numerical_variables:
-            # calculate eta-squared
-            samples = [
-                gr_data[num_variable_name].values
-                for gr_name, gr_data in data.groupby(cat_variable_name, as_index=False)
-            ]
-            kruskal_wallis_test = kruskal(*samples, nan_policy="omit")
-            n_samples = len(samples)
-            eta_squared = (kruskal_wallis_test.statistic - n_samples + 1) / (n - n_samples)
-            eta_squared = checks.check_assoc_value(eta_squared)
-            cat_num_assoc_matrix.loc[cat_variable_name, num_variable_name] = eta_squared
-    return cat_num_assoc_matrix
+    from ._native_dependence import category_codes, category_sample_count, eta_value
+    from .._dataframe import column_values
+    import narwhals.stable.v2 as nw
+    frame = nw.from_native(data, eager_only=True)
+    vectors = {name: np.asarray(column_values(data, name, preserve_nulls=True), dtype=float)
+               for name in numerical_variables}
+    values = np.empty((len(categorical_variables), len(numerical_variables)))
+    for i, category in enumerate(categorical_variables):
+        membership, count = category_codes(frame[category])
+        count = category_sample_count(frame[category], count)
+        for j, number in enumerate(numerical_variables):
+            values[i, j] = checks.check_assoc_value(eta_value(membership, count, vectors[number], n))
+    return pd.DataFrame(values, index=categorical_variables, columns=numerical_variables)
 
 
 def calculate_assoc_matrix(data, corr_method, *, native=False):
@@ -59,19 +43,28 @@ def calculate_assoc_matrix(data, corr_method, *, native=False):
     return table if native else table._dalex_pandas_view()
 
 
-def calculate_pps_matrix(data, agg_method):
+def calculate_pps_matrix(data, agg_method, *, native=False):
     # PPS is an optional pandas-only statistics library, deliberately excluded
     # from the full extra because its dependency bounds can conflict with pandas 2.
     try:
         import ppscore as pps
     except ImportError as exc:
         raise ImportError("Install optional 'ppscore' for PPS dependence matrices") from exc
-    pps_result = pps.matrix(to_pandas(data), sample=None)
-    pps_matrix = pps_result[["x", "y", "ppscore"]].pivot(
-        columns="x", index="y", values="ppscore"
-    )
-    pps_matrix.rename_axis(None, axis=1, inplace=True)
-    pps_matrix.rename_axis(None, axis=0, inplace=True)
+    import narwhals.stable.v2 as nw
+    from ._native_dependence import matrix_table
+    # Only the external PPS call requires pandas. Reshape and symmetrize its
+    # numeric scores independently, then retain the input computation backend.
+    pps_result = nw.from_native(pps.matrix(to_pandas(data), sample=None), eager_only=True)
+    names = sorted(pps_result['x'].unique().to_list(), key=lambda value: (isinstance(value, str), value))
+    positions = {name: index for index, name in enumerate(names)}
+    pps_matrix = np.full((len(names), len(names)), np.nan)
+    seen = set()
+    for left, right, score in pps_result.select('x', 'y', 'ppscore').iter_rows():
+        key = (positions[right], positions[left])
+        if key in seen:
+            raise ValueError('PPS returned duplicate feature pairs')
+        seen.add(key)
+        pps_matrix[key] = score
     # aggregate values to make symmetric matrix
     if agg_method == "max":
         pps_matrix = np.maximum(pps_matrix, pps_matrix.transpose())
@@ -79,7 +72,8 @@ def calculate_pps_matrix(data, agg_method):
         pps_matrix = np.minimum(pps_matrix, pps_matrix.transpose())
     if agg_method == "mean":
         pps_matrix = (pps_matrix + pps_matrix.transpose()) / 2
-    return pps_matrix
+    table = matrix_table(pps_matrix, names, data)
+    return table if native else table._dalex_pandas_view()
 
 
 def calculate_depend_matrix(data, depend_method, corr_method, agg_method, *, native=False):
@@ -87,7 +81,7 @@ def calculate_depend_matrix(data, depend_method, corr_method, agg_method, *, nat
     if depend_method == "assoc":
         table = calculate_assoc_matrix(data, corr_method, native=True)
     elif depend_method == "pps":
-        table = calculate_pps_matrix(data, agg_method)
+        table = calculate_pps_matrix(data, agg_method, native=True)
     elif callable(depend_method):
         try:
             table = depend_method(data)

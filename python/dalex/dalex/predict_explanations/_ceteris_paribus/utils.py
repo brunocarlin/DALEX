@@ -1,149 +1,31 @@
-import multiprocessing as mp
-
+"""Grid helpers and legacy pandas-returning adapters to native CP kernels."""
 import numpy as np
 import pandas as pd
 import narwhals.stable.v2 as nw
-from ..._dataframe import as_eager_dataframe, column_values, set_columns, take_rows, to_pandas
-from tqdm import tqdm
+from ..._dataframe import as_eager_dataframe, column_values, to_pandas
 
 
-def calculate_ceteris_paribus(explainer,
-                              new_observation,
-                              variable_splits,
-                              y,
-                              processes,
-                              verbose=True):
-    """
-    Inner method that calculates ceteris paribus and some additional fields.
-
-    Set profile and new_profile fields to actual values.
-
-    :return: None
-    """
-
-    profiles = calculate_variable_profile(explainer.predict_function,
-                                          explainer.model,
-                                          new_observation,
-                                          variable_splits,
-                                          processes,
-                                          verbose)
-
-    profiles.loc[:, '_label_'] = explainer.label
-
-    # add points of interests
-    predictions = explainer.predict(new_observation)
-
-    new_observation = to_pandas(new_observation)
-    new_observation.loc[:, '_yhat_'] = predictions
-
-    new_observation.loc[:, '_label_'] = explainer.label
-
-    new_observation.loc[:, '_ids_'] = new_observation.index.values
-
-    if y is not None:
-        new_observation.loc[:, '_y_'] = y
-
-    return profiles, new_observation
+def calculate_ceteris_paribus(explainer, new_observation, variable_splits, y,
+                              processes, verbose=True):
+    from ._native import calculate
+    profiles, observations = calculate(explainer, new_observation, variable_splits,
+                                       y, processes, verbose)
+    return profiles._dalex_pandas_view(), observations._dalex_pandas_view()
 
 
-def calculate_variable_profile(predict_function,
-                               model,
-                               data,
-                               variable_splits,
-                               processes,
-                               verbose=True):
-    """
-    Inner function that calculates ceteris paribus for all variables.
-
-    :param explainer:
-    :param data: new observations
-    :param variable_splits: dictionary of split points
-    :return: ceteris paribus profile for all variable
-    """
-
-    if processes == 1:
-        profile = []
-        for variable in tqdm(variable_splits, desc="Calculating ceteris paribus", disable=not verbose):
-            split_points = variable_splits[variable]
-            profile.append(single_variable_profile(predict_function, model, data, variable, split_points))
-    else:
-        with mp.get_context('spawn').Pool(processes) as pool:
-
-            profile = pool.starmap_async(single_variable_profile, [(predict_function, model, data, variable, split_points)
-                                                                   for variable, split_points in
-                                                                   variable_splits.items()]).get()
-
-    profiles = pd.concat(profile)
-    # convert the variable types
-    # convert_floating=False since pandas v1.2 seem to have issues
-    converted = profiles.loc[:, list(variable_splits)].convert_dtypes(convert_floating=False)
-    for variable, column in converted.items():
-        # Explicit positional assignment supports pandas 3's strict dtype rules
-        # and duplicated profile indexes without index alignment.
-        profiles[variable] = column.array
-
-    return profiles
+def calculate_variable_profile(predict_function, model, data, variable_splits,
+                               processes, verbose=True):
+    from ._native import profile_tables
+    return profile_tables(predict_function, model, data, variable_splits,
+                           processes, verbose=verbose)._dalex_pandas_view()
 
 
-def single_variable_profile(predict,
-                            model,
-                            data,
-                            variable,
-                            split_points):
-    """
-    Inner function for calculating variable profile. This function is iterated over all variables.
-
-    :param predict:
-    :param data: new observations
-    :param variable: considered variable
-    :param split_points: dataset is split over these points
-    :return: ceteris paribus profile for one variable
-    """
-    if not isinstance(data, pd.DataFrame):
-        positions = np.repeat(np.arange(data.shape[0], dtype=np.int64), len(split_points))
-        expanded = take_rows(data, positions)
-        original = column_values(expanded, variable)
-        replacements = np.tile(split_points, data.shape[0])
-        if as_eager_dataframe(data).get_column(variable).dtype.is_numeric():
-            # Match the legacy pandas profile path, which deliberately widens
-            # numeric interventions to float even for integer split points.
-            # Keep explicit native null interventions separate from NaN.
-            if replacements.dtype.kind == "O" and any(
-                value is None or value is pd.NA for value in replacements
-            ):
-                replacements = np.array([
-                    None if value is None or value is pd.NA else float(value)
-                    for value in replacements
-                ], dtype=object)
-            else:
-                replacements = replacements.astype(float)
-        native = set_columns(expanded, {variable: replacements})
-        yhat = predict(model, native)
-        result = to_pandas(native)
-        result.index = positions
-        return result.assign(_original_=original, _yhat_=yhat, _vname_=variable, _ids_=positions)
-
-    # remember ids of selected points
-    ids = np.repeat(data.index.values, split_points.shape[0])
-    new_data = data.loc[ids, :]
-    original = new_data.loc[:, variable].copy()
-    if new_data[variable].dtype.kind in 'iufc':
-        try:
-            new_data[variable] = new_data[variable].astype('float')
-        except TypeError:
-            if not isinstance(new_data[variable].dtype, pd.ArrowDtype):
-                raise
-            new_data[variable] = np.asarray(new_data[variable].array.__arrow_array__().to_numpy(), dtype=float)
-    new_data.loc[:, variable] = np.tile(split_points, data.shape[0])
-
-    yhat = predict(model, new_data)
-
-    new_data.loc[:, '_original_'] = original
-    new_data.loc[:, '_yhat_'] = yhat
-    new_data.loc[:, '_vname_'] = variable
-    new_data.loc[:, '_ids_'] = ids
-
-    return new_data
+def single_variable_profile(predict, model, data, variable, split_points):
+    from ._native import single_profile
+    frame, index = single_profile(predict, model, data, variable, split_points)
+    result = to_pandas(frame)
+    result.index = index
+    return result
 
 
 def native_numeric_missing_states(data, variable_splits):

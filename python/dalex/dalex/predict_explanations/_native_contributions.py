@@ -35,6 +35,39 @@ def _distribution(names, caption, predicted, label, namespace):
                    'label': [label] * size}, namespace)
 
 
+def one_dimensional_changes(explainer, cells):
+    names = list(column_names(explainer.data))
+    averages = np.empty(len(names), dtype=object)
+    for i, name in enumerate(names):
+        working = set_columns(copy_for_edit(explainer.data), {name: cells[name]}, scalar=True, copy=False)
+        averages[i] = explainer.predict(working).mean()
+    return averages
+
+
+def two_dimensional_changes(explainer, cells, indices, differences):
+    names = list(column_names(explainer.data))
+    averages, normalized = np.empty(len(indices)), np.empty(len(indices))
+    for index, candidates in enumerate(indices):
+        working = set_columns(copy_for_edit(explainer.data),
+                              {names[int(i)]: cells[names[int(i)]] for i in candidates}, scalar=True, copy=False)
+        averages[index] = explainer.predict(working).mean()
+        value = averages[index]
+        for candidate in candidates:
+            value = value - differences[int(candidate)]
+        normalized[index] = value
+    return averages, normalized
+
+
+def path_order(scores, labels, feature_names, order):
+    if order is None:
+        return np.argsort(np.asarray(scores))[::-1]
+    if np.issubdtype(order.dtype, np.integer):
+        return order
+    if np.isin(order, feature_names).all():
+        return [labels.index(name) for name in order]
+    raise ValueError('Wrong order!')
+
+
 def break_down(explainer, observation, preference, kind, order, keep_distributions):
     namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data))
     names = list(column_names(explainer.data))
@@ -42,35 +75,35 @@ def break_down(explainer, observation, preference, kind, order, keep_distributio
     display = observation_display_values(observation, cells)
     target = explainer.predict(observation)[0]
     baseline = np.mean(explainer.predict(explainer.data))
-    averages = np.empty(len(names), dtype=object)
-    for i, name in enumerate(names):
-        working = set_columns(copy_for_edit(explainer.data), {name: cells[name]}, scalar=True, copy=False)
-        averages[i] = explainer.predict(working).mean()
+    averages = one_dimensional_changes(explainer, cells)
     differences = averages - baseline
     # Rows are (public feature name, positions, sort score). Keep object-score
     # argsort, matching the original pandas object-Series tie ordering.
     rows = [(str(name), (i,), differences[i] if kind == '1d' else abs(differences[i])) for i, name in enumerate(names)]
     if kind == '2d':
-        for lower in range(len(names) - 1):
-            for higher in range(lower + 1, len(names)):
-                working = set_columns(copy_for_edit(explainer.data),
-                                      {names[i]: cells[names[i]] for i in (higher, lower)}, scalar=True, copy=False)
-                average = explainer.predict(working).mean()
-                normalized = average - differences[higher] - differences[lower] - baseline
-                rows.append((f'{names[higher]}:{names[lower]}', (higher, lower), abs(normalized) * preference))
-    if order is None:
-        positions = np.argsort(np.asarray([row[2] for row in rows], dtype=object))[::-1]
-    elif np.issubdtype(order.dtype, np.integer):
-        positions = order
-    elif np.isin(order, names).all():
-        positions = [names.index(name) for name in order]
-    else:
-        raise ValueError('Wrong order!')
+        indices = [(higher, lower) for lower in range(len(names) - 1) for higher in range(lower + 1, len(names))]
+        _, normalized = two_dimensional_changes(explainer, cells, indices, differences)
+        rows.extend((f'{names[higher]}:{names[lower]}', (higher, lower), abs(value - baseline) * preference)
+                    for (higher, lower), value in zip(indices, normalized))
+    positions = path_order(np.asarray([row[2] for row in rows], dtype=object), names, names, order)
+    result, distributions = contributions_along_path(explainer, cells, display,
+        [rows[int(position)] for position in positions], baseline, target, keep_distributions)
+    if not keep_distributions:
+        return result, None
+    baseline_distribution = _distribution('all data', 'all data', explainer.predict(explainer.data), explainer.label, namespace)
+    frames = [baseline_distribution, *distributions]
+    table = nw.concat([nw.from_native(frame) for frame in frames], how='vertical').to_native()
+    indexes = np.concatenate([np.arange(len(nw.from_native(frame))) for frame in frames])
+    return result, IndexedTable(table, indexes)
+
+
+def contributions_along_path(explainer, cells, display, rows, baseline, target, keep_distributions):
+    namespace = nw.get_native_namespace(as_eager_dataframe(explainer.data))
+    names = list(column_names(explainer.data))
     available = set(range(len(names)))
     working = copy_for_edit(explainer.data)
     selected, means, distributions = [], [], []
-    for position in positions:
-        name, candidates, _ = rows[position]
+    for name, candidates, _ in rows:
         if not available.issuperset(candidates):
             continue
         for candidate in candidates:
@@ -91,13 +124,7 @@ def break_down(explainer, observation, preference, kind, order, keep_distributio
                       'cumulative': cumulative, 'contribution': contribution, 'sign': np.sign(contribution),
                       'position': np.arange(len(selected) + 1, -1, -1),
                       'label': [explainer.label] * len(cumulative)}, namespace)
-    if not keep_distributions:
-        return result, None
-    baseline_distribution = _distribution('all data', 'all data', explainer.predict(explainer.data), explainer.label, namespace)
-    frames = [baseline_distribution, *distributions]
-    table = nw.concat([nw.from_native(frame) for frame in frames], how='vertical').to_native()
-    indexes = np.concatenate([np.arange(len(nw.from_native(frame))) for frame in frames])
-    return result, IndexedTable(table, indexes)
+    return result, distributions
 
 
 def _shap_path(predict, model, data, names, cells, path):

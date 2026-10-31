@@ -150,7 +150,7 @@ class PredictAspectImportance(Explanation):
     def _repr_html_(self):
         return self.result._repr_html_()
 
-    def fit(self, explainer, new_observation):
+    def fit(self, explainer, new_observation, *, _rng=None):
         """Calculate the result of explanation
         Fit method makes calculations in place and changes the attributes.
 
@@ -177,7 +177,7 @@ class PredictAspectImportance(Explanation):
         data, names, value_lists = calculate(explainer, _new_observation, _variable_groups,
                                              kind=self.type, N=self.N, n_aspects=self.n_aspects,
                                              sample_method=self.sample_method, f=self.f, B=self.B,
-                                             processes=self.processes, random_state=self.random_state)
+                                             processes=self.processes, random_state=self.random_state, rng=_rng)
         if self._depend_matrix is not None:
             pairs, minima = get_min_depend_from_matrix(self._depend_matrix, names)
         else:

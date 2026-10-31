@@ -9,10 +9,11 @@ manual review.
 The latest verified stable pandas release is **3.1.0 (October 22, 2026)**,
 checked against the [official site](https://pandas.pydata.org/) and
 [PyPI release metadata](https://pypi.org/pypi/pandas/json) on October 30, 2026.
-There is no published pandas 4 release. The `<4` dependency bound is a
-precautionary future-major cap, not a demonstrated incompatibility or a missing
-testable release. Existing development-build tests use pandas 3.2, not pandas 4.
-The bound remains a packaging policy choice for maintainer review.
+There is no published pandas 4 release. Speculative future-major pandas and
+Narwhals package caps have been removed; code selects the maintained Narwhals
+stable.v2 API. Existing development-build tests use pandas 3.2, not pandas 4.
+Only actual tested versions are evidence of compatibility. CI major-version
+selectors are reproducible test choices rather than runtime package limits.
 
 ## Compatibility contract
 
@@ -137,28 +138,28 @@ The review report records the evidence for these criteria and its exact scope:
   compatibility CI job compares complete plot payloads, including tie order,
   sampling, hover text and layout. Lift plots also handle fewer than 101 rows and
   models with different row counts.
-- Private reference utilities and pandas-only helper branches remain for
-  compatibility; public fit paths use the native implementations above. Legacy
-  writable tables, index/dtype compatibility, pandas scalar display formatting
-  and optional PPS are explicit boundaries.
+- CP, aggregate overlays, all fairness figures and Aspect/triplot plot preparation
+  retain native tables. Typed metadata and caller edits remain compatible. Native
+  widget callbacks, real fitted pipelines and observation snapshots are tested.
+- Older breakdown/Shapley, CP/aggregate and Aspect/triplot helpers now adapt
+  shared native kernels, retaining their historical pandas return contracts.
+  Categorical statistics share vector kernels; PPS score reshaping returns to
+  the original backend after its unavoidable external pandas call. Independent
+  upstream checks cover 106 helper outputs, including indexes and dtypes.
+- Nonlinear hierarchical Shapley advances one serial RNG stream across cuts
+  and final singles, preserving upstream estimates. A six-feature regression
+  case exposed a reset error missed by the earlier linear examples. Pandas
+  callbacks also retain historical Aspect intervention-index handling.
 
 ## Work remaining before claiming a full internal transition
 
-- Aspect/triplot plotting still contains
-  pandas preparation. These are unfinished migration work, not a requirement of
-  the public pandas API. Typed partitions, group display labels, observation
-  indexes and edited public views must remain compatible when moving them.
-- Aggregated-profile line/bar preparation now uses native tables, including
-  legacy group captions and edited pandas views. Its `geom='profiles'` overlay
-  now delegates to native CP preparation as well. Combining incompatible native
-  partition scalar types remains a precision boundary; it must not silently
-  round large integer axes to float.
-- Older private pandas algorithms remain alongside native implementations.
-  Replace them with compatibility adapters and consolidate shared computation,
-  rather than maintaining independent algorithms indefinitely.
-- Extend strict conversion guards through the remaining plot families and
-  external integrations. Existing cross-backend tests certify the covered
-  workflows, not every possible callback, dtype or third-party dependency.
+- Fairness text-check preparation still reads a pandas result for its threshold
+  reductions. Move those calculations to the shared native score table while
+  retaining the exact historical text-formatting boundary.
+- Combining incompatible native partition scalar types remains a precision
+  boundary. Do not silently round large integer axes to float. Existing guards
+  and cross-backend tests certify covered workflows, not every possible callback,
+  dtype or third-party dependency.
 - The source-stamped performance report still records pandas importance and
   partial/conditional-profile regressions, plus higher wide-frame Polars RSS.
   Plotting-only measurements do not supersede those explanation benchmarks.
@@ -195,8 +196,9 @@ fit-to-plot guards forbid pandas DataFrame/Series construction.
 The focused suite covers 91 cases, and the required upstream comparison now
 includes 132 full figures. These checks do not certify every possible mixed
 scalar partition: incompatible exact large-integer/float axes still require
-separate selections rather than silent coercion. Aspect/triplot/fairness plotting,
-private algorithm consolidation and measured regressions remain active work.
+separate selections rather than silent coercion. The subsequent fairness and
+Aspect plotting reports record their own source-stamped evidence; their counts
+do not retroactively apply to this CP checkpoint.
 
 ## Fairness plotting follow-up
 

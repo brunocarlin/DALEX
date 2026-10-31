@@ -59,6 +59,10 @@ both scripts against a pinned upstream revision.
 `Python-check.yaml` runs the full suite on Python 3.10–3.14 on Linux/macOS,
 Windows 3.14, pandas 3, minimum pandas, and Polars 1/Narwhals 2. The required
 3.14t job checks the actual disabled GIL state after each dependency import.
+An installed-wheel Python 3.14 job runs 12 core explanation/export/plot/pickle
+workflows with pandas 3 and without Polars, Arrow, sklearn, SHAP, LIME or statsmodels.
+Diagnostics explicitly disable optional smoothing; widget/estimator extras remain
+separate capabilities. Wheel metadata verifies the documented dependency bounds.
 Separate required CPU jobs exercise PyTorch and TensorFlow Deep/Gradient SHAP;
 those tests live under `integration_tests/`, outside the ordinary test directory.
 
@@ -83,10 +87,12 @@ pandas/Polars/Arrow at 1e-12, and checks edited views, mixed feature metadata, l
 integers, positional sampling and unequal/small lift datasets. KernelExplainer's
 upstream local closure is not claimed to be pickleable.
 
-`ci/compare_plots.py` independently compares 152 complete figure payloads with the
-pinned, unmodified upstream pandas implementation. This runs in the required
-upstream-compatibility job; test equality covers layout and hover text as well as
-numerical traces. It complements the existing 27 explanation-output comparisons.
+`ci/compare_plots.py` independently compares 174 figures with pinned, unmodified
+upstream: 168 complete payloads and six triplots after removing only redundant
+unlabelled collinear hover samples. That density exception comes from removing
+browser layout resolution; geometry, text and layout still match. This runs in
+the required upstream-compatibility job and complements 29 numerical outputs,
+including nonlinear hierarchical Aspect cases.
 
 ## Aggregated-profile plotting follow-up
 
@@ -96,7 +102,7 @@ mutable pandas views, exact large integer axes, missing/nullable numeric groups,
 fit-to-plot construction guards. The pandas-prepared raw CP overlay is exercised
 for compatibility and is now covered by the CP native construction guarantee.
 `ci/compare_plots.py` now also compares 30 profile figures with unchanged upstream
-(83 comparisons before the CP follow-up; 132 in the current harness).
+(83 comparisons before the CP follow-up; 132 after that checkpoint).
 
 ## CP plotting and publication dtypes
 
@@ -118,3 +124,29 @@ Sixteen real fitted sklearn/LightGBM pipeline cases preserve original Polars or
 Arrow model batches through fairness plotting. The upstream harness adds 20
 complete fairness figures (152 overall) and fixes its child hash seed so legacy
 radar trace ordering is comparable between processes.
+
+## Aspect plots and consolidation of private adapters
+
+`test_native_aspect_plotting.py` covers native/published-view figures, edited
+tables, precise heterogeneous hover values, native widget callbacks, rounding
+callback contracts and fit-time observation snapshots. `test_native_aspect_integration.py`
+adds 48 real sklearn/LightGBM regression/classification pipeline cases from
+native Polars/Arrow through fitting, exports, figures and pickle round trips.
+
+`test_legacy_native_adapters.py` includes untouched-upstream golden regressions
+for pandas index-sensitive callbacks and nonlinear hierarchical Shapley. The
+latter exposed a serial RNG reset error concealed by linear models. It also
+checks the optional PPS boundary independently of PPS installation: external
+calls receive pandas, while score matrices return to the original backend.
+
+`ci/compare_legacy_adapters.py` compares 106 outputs from an unmodified upstream
+package in a separate interpreter. These cover private breakdown, Shapley, CP,
+aggregate, categorical statistics and Aspect/triplot helpers, including indexes,
+dtypes, nested metadata, serial/process paths and dtype-sensitive tie order.
+The reference receives a documented NumPy spelling shim and a pickle-safe
+residual callback. Matching global seed initialization permits comparison with
+old helpers that relied on constructor-managed global NumPy state. The shared
+kernels retain local explicit streams rather than resetting caller RNG state.
+
+The real optional PPS check covers pandas/Polars/Arrow, verifies native matrix
+storage and compares numeric values in its pandas 1.5.3-compatible environment.

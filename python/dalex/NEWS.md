@@ -2,6 +2,14 @@
 
 ### development
 
+* prepare CP/aggregate overlays, fairness and Aspect/triplot figures natively,
+  preserving precise metadata, legacy edits and native widget callbacks
+* consolidate older pandas algorithms into adapters over shared native kernels;
+  compare private indexes/dtypes and nonlinear estimates with untouched upstream
+* retain one serial Shapley path stream across hierarchy cuts and historical
+  pandas intervention indexes for index-sensitive Aspect callbacks
+* test the installed wheel with pandas-only core dependencies; require optional
+  statsmodels only when diagnostic smoothing is requested
 * retain native importance result/permutation tables until legacy pandas access;
   add independent result_as exports and retain writable pandas result semantics
 * compute CP and aggregated profiles through typed native tables, including
@@ -71,8 +79,10 @@
   model callbacks across explanation methods; retain pandas result tables (#575)
 * propose Python >=3.10 and Narwhals >=2; validate Python 3.10–3.14 and provide a
   locked conda-forge Polars route for Python 3.14t with the GIL disabled
-* allow pandas >=1.5.3,<4 after fixing pandas 3 copy-on-write, string dtype and
+* allow pandas >=1.5.3 after fixing pandas 3 copy-on-write, string dtype and
   reshaping compatibility; keep legacy pandas coverage in CI
+* use Narwhals' stable.v2 API without speculative future-major dependency caps;
+  report the pandas/Narwhals versions actually tested separately
 * report cold/warm backend performance, memory and numerical parity separately;
   free-threaded SHAP extension safety remains an upstream limitation
 

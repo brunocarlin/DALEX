@@ -142,6 +142,10 @@ def test_duplicate_diagnostics_label_override_does_not_publish_the_view(case):
     value = exp.model_diagnostics(label='custom')
     assert '_compatibility_result' not in value.__dict__
     native = value.result_as()
-    assert (native['label'].to_numpy() == 'custom').all()
+    # pandas 1.5's partial MultiIndex __getitem__ reindexes the unrelated
+    # duplicate features. Inspect the label's physical column directly.
+    name = ('label', 1) if isinstance(native.columns, pd.MultiIndex) else 'label'
+    position = list(native.columns).index(name)
+    assert (native.iloc[:, position].to_numpy() == 'custom').all()
     assert '_compatibility_result' not in value.__dict__
     pd.testing.assert_frame_equal(value.result, native)

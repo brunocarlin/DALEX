@@ -38,7 +38,8 @@ def _integer_weights(frame, span):
     """Subtract integer grid keys exactly before entering floating statistics."""
     from decimal import Decimal
     grid, original = frame['_x_'].to_list(), frame['_original_'].to_list()
-    valid = [value for value in grid if not _missing(value)]
+    valid = [int(value) if isinstance(value, (int, np.integer)) else value
+             for value in grid if not _missing(value)]
     width = (max(valid) - min(valid)) if valid else 1.
     if not width:
         width = 1.
@@ -46,6 +47,10 @@ def _integer_weights(frame, span):
     for value, split in zip(original, grid):
         if _missing(value) or _missing(split):
             distances.append(np.nan)
+        elif isinstance(value, (int, np.integer)) and isinstance(split, (int, np.integer)):
+            # Older pandas returns NumPy integer scalars here. Their unsigned
+            # subtraction wraps, and a signed max-min range can overflow too.
+            distances.append(float(int(value) - int(split)))
         elif isinstance(value, (int, np.integer)) and isinstance(split, (float, np.floating)):
             distances.append(float(Decimal(int(value)) - Decimal.from_float(float(split))))
         elif isinstance(split, (int, np.integer)) and isinstance(value, (float, np.floating)):
@@ -109,7 +114,9 @@ def _numeric_weights(frame, kind, span):
     """
     large = _large_integer(frame, '_x_') or _large_integer(frame, '_original_')
     if large:
-        weights = np.asarray(_integer_weights(frame, span).to_numpy(), dtype=float)
+        # Arrow/Polars exports can be read-only views. Missing-bin normalization
+        # below edits only this owned numerical work buffer.
+        weights = np.array(_integer_weights(frame, span).to_numpy(), dtype=float, copy=True)
     else:
         grid = np.asarray(column_values(frame.to_native(), '_x_', preserve_nulls=True), dtype=float)
         original = np.asarray(column_values(frame.to_native(), '_original_', preserve_nulls=True), dtype=float)

@@ -112,3 +112,17 @@ def test_nullable_mixed_numeric_group_labels_match_pandas(integer_dtype):
                                   {'g': frame.g.dtype, 'h': frame.h.dtype}, True)
     expected = table._dalex_pandas_view()['_groups_'].tolist()
     assert table._dalex_plot_data()['_groups_'].tolist() == expected
+
+
+@pytest.mark.parametrize('backend', ['polars', 'pyarrow'])
+@pytest.mark.parametrize('dtype', [pl.Datetime('ns'), pl.Datetime('ns', 'Europe/Warsaw'), pl.Duration('ns'), pl.Date])
+def test_temporal_group_captions_keep_nanoseconds_and_missing_labels(monkeypatch, backend, dtype):
+    from dalex.model_explanations._aggregated_profiles._table import AggregatedPartitions
+    frame = pl.DataFrame({'_vname_': ['x'] * 3, '_label_': ['model'] * 3,
+                           '_x_': [0., 1., 2.], '_yhat_': [1., 2., 3.],
+                           'g': pl.Series([1, None, 3], dtype=pl.Int64).cast(dtype)})
+    table = AggregatedPartitions([frame_as(frame, backend)], None, ['g'], {}, True)
+    expected = table._dalex_pandas_view()['_groups_'].tolist()
+    with native_computation_only(monkeypatch, backend):
+        actual = nw.from_native(table._dalex_plot_data())['_groups_'].to_list()
+    assert actual == expected

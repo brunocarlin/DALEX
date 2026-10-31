@@ -34,7 +34,25 @@ class AggregatedPartitions:
                     values = series.to_list()
                     # Match the legacy table's scalar display, including its
                     # row-wise numeric promotion and missing group spellings.
-                    if namespace.__name__ == 'pandas':
+                    if namespace.__name__ != 'pandas' and (
+                        isinstance(series.dtype, (nw.Datetime, nw.Duration)) or
+                        series.dtype == nw.Date and namespace.__name__ == 'polars'
+                    ):
+                        # Scalar display is an intentional compatibility
+                        # boundary. Integer epochs avoid Python datetime's
+                        # microsecond truncation without creating pandas tables.
+                        from narwhals.dependencies import get_pandas
+                        pd = get_pandas()
+                        counts = series.cast(nw.Int64).to_list()
+                        if isinstance(series.dtype, nw.Duration):
+                            values = [pd.NaT if value is None else pd.Timedelta(value, unit=series.dtype.time_unit)
+                                      for value in counts]
+                        else:
+                            unit = 'D' if series.dtype == nw.Date else series.dtype.time_unit
+                            zone = None if series.dtype == nw.Date else series.dtype.time_zone
+                            values = [pd.NaT if value is None else pd.Timestamp(value, unit=unit, tz=zone)
+                                      for value in counts]
+                    elif namespace.__name__ == 'pandas':
                         values = list(frame.to_native()[name].astype(dtype).array) if dtype is not None else values
                         if dtype == 'object':
                             values = [np.nan if missing else value for value, missing in zip(values, series.is_null().to_list())]

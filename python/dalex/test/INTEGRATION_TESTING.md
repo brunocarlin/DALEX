@@ -90,9 +90,9 @@ numerical traces. It complements the existing 27 explanation-output comparisons.
 
 ## Aggregated-profile plotting follow-up
 
-`test_native_aggregate_plotting.py` adds 89 cases for partial, conditional and
+`test_native_aggregate_plotting.py` adds 97 cases for partial, conditional and
 accumulated line/bar figures, multiple models, categorical profiles, grouping,
-mutable pandas views, exact large integer axes, missing groups and native
+mutable pandas views, exact large integer axes, missing/nullable numeric groups, nanosecond/timezone captions and native
 fit-to-plot construction guards. The pandas-prepared raw CP overlay is exercised
 for compatibility but excluded from the native construction guarantee.
 `ci/compare_plots.py` now also compares 30 profile figures with unchanged upstream

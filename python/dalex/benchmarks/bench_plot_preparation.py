@@ -66,6 +66,19 @@ def worker(args):
             value.residuals = native(columns)
             return value
 
+    elif args.family == 'fairness-check':
+        from dalex.fairness import GroupFairnessClassification
+        groups, count = 4, 256
+        protected = np.repeat([f'g{i}' for i in range(groups)], count)
+        target = np.tile(np.arange(count) % 2, groups)
+        predicted = np.tile(np.linspace(.05, .95, count), groups) + np.repeat([0., .01, -.01, .02], count)
+
+        def make():
+            first = GroupFairnessClassification(target, predicted, protected, 'g0', 'model1', _backend=backend)
+            other = GroupFairnessClassification(target, predicted + .01, protected, 'g0', 'model2', _backend=backend)
+            first._benchmark_others = [other]
+            return first
+
     elif args.family in ['ceteris-paribus', 'profiles-overlay']:
         from dalex.predict_explanations._ceteris_paribus._table import ProfileTables, ObservationTable
         from dalex.model_explanations._aggregated_profiles._table import AggregatedPartitions
@@ -125,6 +138,8 @@ def worker(args):
             return value.plot(show_observations=False, show=False)
         if args.family == 'profiles-overlay':
             return value.plot(geom='profiles', show=False)
+        if args.family == 'fairness-check':
+            return value.plot(value._benchmark_others, type='fairness_check', verbose=False, show=False)
         return value.plot(show=False)
 
     plot(make())

@@ -5,6 +5,7 @@ residuals and classification curves. No browser or screenshot is required.
 """
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -15,6 +16,8 @@ def capture(root):
     import numpy as np
     import pandas as pd
     import dalex as dx
+    from copy import deepcopy
+    from dalex.fairness import GroupFairnessClassification, GroupFairnessRegression
     from sklearn.linear_model import LinearRegression
 
     rng = np.random.default_rng(391)
@@ -110,6 +113,30 @@ def capture(root):
             for geom in ['roc', 'ecdf', 'lift']:
                 np.random.seed(938)
                 save(f'performance-{count}-{ties}-{geom}', parts[0].plot(parts[1], geom=geom, show=False))
+    protected = np.repeat(['a', 'b', 'c'], 40)
+    target = np.tile(np.arange(40) % 2, 3)
+    probabilities = np.tile(np.linspace(.05, .95, 40), 3)
+    fairness = [GroupFairnessClassification(target, probabilities + offset, protected, 'a', label)
+                for label, offset in [('second', 0), ('first', .025)]]
+    for multiple in [False, True]:
+        for kind in ['fairness_check', 'metric_scores', 'stacked', 'radar', 'performance_and_fairness',
+                     'heatmap', 'density', 'ceteris_paribus_cutoff']:
+            pair = deepcopy(fairness)
+            options = {} if kind == 'density' else {'verbose': False}
+            if kind == 'ceteris_paribus_cutoff':
+                options.update(subgroup='b', grid_points=7, metrics=['TPR', 'ACC'])
+            save(f'fairness-{multiple}-{kind}', pair[0].plot(pair[1] if multiple else None,
+                                                            type=kind, show=False, **options))
+    fair_rng = np.random.default_rng(842)
+    target = fair_rng.normal(size=120)
+    predictions = .8 * target + fair_rng.normal(size=120) * .4
+    fairness = [GroupFairnessRegression(target, predictions + offset, protected, 'a', label)
+                for label, offset in [('second', 0), ('first', .025)]]
+    for multiple in [False, True]:
+        for kind in ['fairness_check', 'density']:
+            options = {} if kind == 'density' else {'verbose': False}
+            save(f'regression-fairness-{multiple}-{kind}', fairness[0].plot(fairness[1] if multiple else None,
+                                                                          type=kind, show=False, **options))
     return figures
 
 
@@ -127,7 +154,8 @@ def main():
     captures = []
     for name, root in roots:
         path = output.with_suffix(f'.{name}.json')
-        subprocess.run([sys.executable, __file__, '--capture-root', str(root), '--output', str(path)], check=True)
+        subprocess.run([sys.executable, __file__, '--capture-root', str(root), '--output', str(path)], check=True,
+                       env=dict(os.environ, PYTHONHASHSEED='0'))
         captures.append(json.loads(path.read_text(encoding='utf-8')))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'benchmarks'))
     from bench_plot_preparation import compare_figures

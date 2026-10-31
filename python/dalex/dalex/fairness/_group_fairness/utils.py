@@ -97,21 +97,12 @@ class SubgroupConfusionMatrixMetrics:
         self.subgroup_confusion_matrix_metrics = subgroup_confusion_matrix_metrics
 
     def to_vertical_DataFrame(self) -> pd.DataFrame:
-
-        df_list = []
-        metrics = self.subgroup_confusion_matrix_metrics
-        for subgroup in metrics.keys():
-            metric = metrics.get(subgroup)
-            subgroup_vec = np.repeat(subgroup, len(metric))
-            sub_df = pd.DataFrame({'metric': metric.keys(), 'subgroup': subgroup_vec, 'score': metric.values()})
-            df_list.append(sub_df)
-        data = pd.concat(df_list, ignore_index=True)
-        return data
+        from ._plotting import long_frame
+        frame = nw.from_native(self.to_native_table('pandas').data)
+        return long_frame(frame).select('metric', 'subgroup', 'score').to_pandas().reset_index(drop=True)
 
     def to_horizontal_DataFrame(self) -> pd.DataFrame:
-
-        metrics = self.subgroup_confusion_matrix_metrics
-        return pd.DataFrame(metrics).transpose()
+        return self.to_native_table('pandas')._dalex_pandas_view()
 
     def to_native_table(self, backend='pandas'):
         metrics = self.subgroup_confusion_matrix_metrics
@@ -151,37 +142,14 @@ def calculate_ratio(sub_confusion_matrix_metrics, privileged, *, native=False, b
 
 # -------------- Functions used in plots --------------
 def _unwrap_parity_loss_data(fobject, other_objects, metrics, verbose):
-    """ Unwrap parity loss data
-    Some functions use using same computations, they are put here.
-    Function creates parity loss DataFrame from fobject and stacks it with
-    data from other_objects. This is private, helper function.
-    """
-
-    data = pd.DataFrame()
-    data['score'] = deepcopy(fobject.parity_loss)
-    data['label'] = np.repeat(fobject.label, len(fobject.parity_loss))
-    data['metric'] = data.index
-    data = data.reset_index(drop=True)
-
-    if other_objects is not None:
-        for object in other_objects:
-            other_data = pd.DataFrame()
-            other_data['score'] = deepcopy(object.parity_loss)
-            other_data['label'] = np.repeat(object.label, len(object.parity_loss))
-            other_data['metric'] = other_data.index
-            other_data = other_data.reset_index(drop=True)
-            data = pd.concat([data, other_data])
-
-    if len(metrics) > 1:
-        data = data.loc[data.metric.isin(metrics), :]
-    else:
-        data = data.loc[data.metric == metrics[0]]
-    # checking for nans
-    if any(pd.isna(data.score)):
-        models_with_nans = set(data.loc[pd.isna(data.score), :].label)
-        helper.verbose_cat(f"Found NaNs in following models: {models_with_nans}", verbose)
-
-    return data
+    """Legacy pandas adapter over the native parity plot table."""
+    from ._plotting import parity_data, table_frame
+    result = parity_data(fobject, other_objects, metrics, verbose).to_pandas()
+    positions = [np.flatnonzero(np.isin(table_frame(obj, 'parity_loss')['metric'].to_list(), metrics))
+                 for obj in [fobject, *(other_objects or [])]]
+    result = result.loc[:, ['score', 'label', 'metric']]
+    result.index = np.concatenate(positions)
+    return result
 
 
 def _fairness_theme(title):
@@ -195,26 +163,18 @@ def _fairness_theme(title):
 
 
 def _metric_ratios_2_df(fobject):
-    """
-    Converts GroupFairnessClassification
-    to elegant DataFrame with 4 columns (subgroup, metric, score, label)
-    """
-
-    data = fobject.result
-    # Preserve row-major order and missing scores across both pandas stack
-    # implementations (pandas 3 no longer accepts dropna=False).
-    data = pd.DataFrame({
-        "subgroup": np.repeat(data.index.to_numpy(), data.shape[1]),
-        "metric": np.tile(data.columns.to_numpy(), data.shape[0]),
-        "score": data.to_numpy().reshape(-1),
-    })
-    data = data.loc[data.metric.isin(["TPR", "ACC", "PPV", "FPR", "STP"])]
-    data = data.loc[data.subgroup != fobject.privileged]
-    data.score -= 1
-
-    data['label'] = np.repeat(fobject.label, data.shape[0])
-
-    return data
+    """Legacy pandas adapter over the common native long-table kernel."""
+    from ._plotting import long_table, table_frame
+    metrics = ['TPR', 'ACC', 'PPV', 'FPR', 'STP']
+    frame = table_frame(fobject)
+    columns = [name for name in frame.columns if name != 'subgroup']
+    selected = np.tile(np.isin(columns, metrics), len(frame)) & np.repeat(
+        np.asarray(frame['subgroup'].to_list()) != fobject.privileged, len(columns))
+    result = (long_table(fobject).filter(nw.col('metric').is_in(metrics) &
+                                       (nw.col('subgroup') != fobject.privileged))
+              .with_columns((nw.col('score') - 1).alias('score')).to_pandas())
+    result.index = np.flatnonzero(selected)
+    return result
 
 
 def _classification_performance(fobject, verbose, type='accuracy'):

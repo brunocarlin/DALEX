@@ -144,7 +144,7 @@ The review report records the evidence for these criteria and its exact scope:
 
 ## Work remaining before claiming a full internal transition
 
-- Aspect/triplot and fairness plotting still contain
+- Aspect/triplot plotting still contains
   pandas preparation. These are unfinished migration work, not a requirement of
   the public pandas API. Typed partitions, group display labels, observation
   indexes and edited public views must remain compatible when moving them.
@@ -197,3 +197,19 @@ includes 132 full figures. These checks do not certify every possible mixed
 scalar partition: incompatible exact large-integer/float axes still require
 separate selections rather than silent coercion. Aspect/triplot/fairness plotting,
 private algorithm consolidation and measured regressions remain active work.
+
+## Fairness plotting follow-up
+
+Classification fairness checks, metric scores, stacked/radar, performance/fairness,
+heatmap, cutoff and density plots use native preparation. Regression fairness
+checks and density plots are covered as well. Native score tables preserve
+subgroup/metric order and explicit pandas edits. The legacy vertical/horizontal
+confusion tables and private parity/ratio helpers are adapters over shared native
+kernels, retaining their pandas return types and indexes.
+
+Intentional corrections: cutoff plotting copies settings instead of mutating
+callers; heatmaps align metrics by name and leave absent values missing; plots
+use finite bounds when scores are missing; cutoff searches report an actionable
+error when no requested-metric total is finite. Metric-score plots honor explicit
+public table edits. Default finite figures are independently compared with
+unchanged upstream. Arbitrary user-assigned score dtypes remain uncertified.

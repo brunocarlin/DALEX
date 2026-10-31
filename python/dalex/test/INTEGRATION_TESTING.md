@@ -83,7 +83,7 @@ pandas/Polars/Arrow at 1e-12, and checks edited views, mixed feature metadata, l
 integers, positional sampling and unequal/small lift datasets. KernelExplainer's
 upstream local closure is not claimed to be pickleable.
 
-`ci/compare_plots.py` independently compares 132 complete figure payloads with the
+`ci/compare_plots.py` independently compares 152 complete figure payloads with the
 pinned, unmodified upstream pandas implementation. This runs in the required
 upstream-compatibility job; test equality covers layout and hover text as well as
 numerical traces. It complements the existing 27 explanation-output comparisons.
@@ -107,3 +107,14 @@ nullable and Arrow dtype publication, and strict native fit-to-plot guards.
 Aggregated raw-profile overlays are included. The independent upstream harness
 adds 49 CP figures, including numeric/categorical axes, multiple models and
 observations, observation markers, colors and nullable floating captions.
+
+## Fairness plots and legacy adapters
+
+`test_native_fairness_plotting.py` adds 119 cases covering all classification and
+regression fairness plot types, backend/published-view figure parity, native
+construction guards, mutable score views, metric alignment, missing values,
+cutoff setting snapshots, and historical private pandas adapter indexes/types.
+Sixteen real fitted sklearn/LightGBM pipeline cases preserve original Polars or
+Arrow model batches through fairness plotting. The upstream harness adds 20
+complete fairness figures (152 overall) and fixes its child hash seed so legacy
+radar trace ordering is comparable between processes.

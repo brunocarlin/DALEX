@@ -4,6 +4,7 @@ import json
 
 import narwhals.stable.v2 as nw
 import numpy as np
+import pandas as pd
 import polars as pl
 import pytest
 
@@ -98,3 +99,16 @@ def test_profile_display_edge_types_match_legacy(monkeypatch, backend, kind):
     with no_legacy_materialization(monkeypatch):
         actual = json.loads(value.plot(show=False).to_json())
     assert_figures_equal(actual, expected)
+
+
+@pytest.mark.parametrize('integer_dtype', ['Int64', 'UInt64', 'Int32'])
+def test_nullable_mixed_numeric_group_labels_match_pandas(integer_dtype):
+    from dalex.model_explanations._aggregated_profiles._table import AggregatedPartitions
+    frame = pd.DataFrame({'_vname_': ['x'] * 3, '_label_': ['model'] * 3,
+                           '_x_': [0., 1., 2.], '_yhat_': [1., 2., 3.],
+                           'g': pd.Series([1, None, 3], dtype=integer_dtype),
+                           'h': pd.Series([1.5, 2.5, None], dtype='Float64')})
+    table = AggregatedPartitions([frame], None, ['g', 'h'],
+                                  {'g': frame.g.dtype, 'h': frame.h.dtype}, True)
+    expected = table._dalex_pandas_view()['_groups_'].tolist()
+    assert table._dalex_plot_data()['_groups_'].tolist() == expected

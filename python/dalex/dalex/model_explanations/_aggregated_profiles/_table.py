@@ -47,6 +47,11 @@ class AggregatedPartitions:
                     columns.append(values)
                     numeric.append(dtype != 'object' and series.dtype.is_numeric())
                 if all(numeric):
+                    if any(frame[name].dtype.is_float() for name in self.groups):
+                        # pandas nullable numeric rows share a floating dtype
+                        # even when pd.NA forces NumPy's array to object.
+                        columns = [[float(value) if isinstance(value, (int, float, np.number)) else value
+                                    for value in values] for values in columns]
                     rows = np.asarray(columns).T
                 else:
                     rows = zip(*columns)

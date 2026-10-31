@@ -87,9 +87,10 @@ upstream local closure is not claimed to be pickleable.
 pinned, unmodified upstream pandas implementation. This runs in the required
 upstream-compatibility job; test equality covers layout and hover text as well as
 numerical traces. It complements the existing 27 explanation-output comparisons.
-# Aggregated-profile plotting follow-up
 
-`test_native_aggregate_plotting.py` adds 86 cases for partial, conditional and
+## Aggregated-profile plotting follow-up
+
+`test_native_aggregate_plotting.py` adds 89 cases for partial, conditional and
 accumulated line/bar figures, multiple models, categorical profiles, grouping,
 mutable pandas views, exact large integer axes, missing groups and native
 fit-to-plot construction guards. The pandas-prepared raw CP overlay is exercised

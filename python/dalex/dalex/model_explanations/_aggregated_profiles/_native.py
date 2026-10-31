@@ -133,6 +133,24 @@ def _numeric_weights(frame, kind, span):
     return weights
 
 
+def _profile_groups(frame):
+    """A CP partition normally already has one variable and model label.
+
+    Avoid copying its entire table through a group-by for that common case.
+    Edited legacy tables can contain several labels; they retain the general
+    split path, including its missing-key behavior and original row order.
+    """
+    names = ['_vname_', '_label_']
+    columns = [frame[name] for name in names]
+    values = [column.unique().to_list() for column in columns]
+    if all(len(value) == 1 for value in values):
+        if any(column.null_count() == len(frame) for column in columns):
+            return
+        yield tuple(value[0] for value in values), frame
+        return
+    yield from frame.group_by(names, drop_null_keys=True)
+
+
 def reduce_profiles(data, kind, groups=(), *, span=.25, partition_keys=()):
     """Reduce one variable/model partition; retain typed group memberships.
 
@@ -320,7 +338,7 @@ def aggregate_long_profiles(data, mean_prediction, kind, groups, center, span):
         index = None
     else:
         partitions = []
-        for key, split in frame.group_by(['_vname_', '_label_'], drop_null_keys=True):
+        for key, split in _profile_groups(frame):
             key = tuple(value.as_py() if hasattr(value, 'as_py') else value for value in key)
             partitions.append((key, split))
         partitions.sort(key=lambda item: tuple((isinstance(value, str), value) for value in item[0]))
@@ -440,15 +458,20 @@ def aggregate_ceteris(profiles, variables, variable_type, kind, groups, span, ce
         keep = list(dict.fromkeys(['_vname_', '_label_', '_x_', '_yhat_', '_ids_', '_original_', *groups]))
         keep += [name for name in ('_x_kind_', '_original_kind_') if name in frame.columns]
         frame = frame.select(keep)
-        for key, split in frame.group_by(['_vname_', '_label_'], drop_null_keys=True):
+        for key, split in _profile_groups(frame):
             key = tuple(value.as_py() if hasattr(value, 'as_py') else value for value in key)
-            partitions.setdefault(key, []).append(export_frame(split.to_native(), target))
+            native = split.to_native()
+            partitions.setdefault(key, []).append(
+                native if nw.get_native_namespace(split).__name__ == target else export_frame(native, target))
     ordered = list(partitions)
     if kind != 'partial':
         ordered.sort(key=lambda key: tuple((isinstance(value, str), value) for value in key))
     results, indexes = [], []
     for variable, label in ordered:
-        joined = concat_compatible(partitions[(variable, label)])
+        parts = partitions[(variable, label)]
+        # Reductions below create new result buffers and never edit their input.
+        # Public exports still clone independently at their documented boundary.
+        joined = parts[0] if len(parts) == 1 else concat_compatible(parts)
         reduced = nw.from_native(reduce_profiles(joined, kind, groups, span=span))
         reduced = reduced.with_columns(nw.lit(variable).alias('_vname_'), nw.lit(label).alias('_label_'),
                                         nw.lit(0).cast(nw.Int64).alias('_ids_'))

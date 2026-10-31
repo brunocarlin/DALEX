@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import narwhals.stable.v2 as nw
 from narwhals.dependencies import is_pandas_dataframe
-from .._dataframe import to_numpy, frame_from_values, select_columns
+from .._dataframe import to_numpy, frame_from_values, select_columns, native_namespace
 
 import types, inspect, warnings
 from functools import partial
@@ -24,7 +24,7 @@ def create_lime_explanation(explainer, new_observation, **kwargs):
     rows = explanation.as_list()
     explanation.result = nw.from_dict({'variable': [row[0] for row in rows],
                                        'effect': [row[1] for row in rows]},
-                                      backend=nw.get_native_namespace(nw.from_native(explainer.data))).to_native()
+                                      backend=native_namespace(explainer.data)).to_native()
     return explanation
     
 def unpack_kwargs_lime(explainer, new_observation, **kwargs):

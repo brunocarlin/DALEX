@@ -547,13 +547,21 @@ def frame_from_values(values, reference, columns=None):
     if array.ndim != 2 or array.shape[1] != len(names):
         raise ValueError("Feature matrix must have the same ordered columns as the reference")
     if isinstance(reference, pd.DataFrame):
+        selected_reference = reference if columns is None else reference.loc[:, names]
+        if selected_reference.shape[1] != len(names):
+            raise ValueError('Explicit columns select duplicate labels ambiguously; omit columns to retain every physical feature')
         # A mixed NumPy matrix has object dtype for every column. Reconstruct
         # each column separately so numeric features remain numeric, and restore
         # categorical metadata expected by dataframe-aware model pipelines.
-        result = pd.DataFrame({name: array[:, i].tolist() for i, name in enumerate(names)})
-        for name in names:
-            if isinstance(reference[name].dtype, pd.CategoricalDtype):
-                result[name] = pd.Categorical(result[name], dtype=reference[name].dtype)
+        # Construct by physical position so duplicate labels do not collapse
+        # dictionary keys, and retain original Index/MultiIndex metadata.
+        result = pd.DataFrame({i: array[:, i].tolist() for i in range(len(names))},
+                              index=pd.RangeIndex(len(array)))
+        result.columns = selected_reference.columns.copy()
+        for i in range(len(names)):
+            dtype = selected_reference.iloc[:, i].dtype
+            if isinstance(dtype, pd.CategoricalDtype):
+                result.isetitem(i, pd.Categorical(result.iloc[:, i], dtype=dtype))
         return result
     frame = as_eager_dataframe(reference)
     backend = nw.get_native_namespace(frame)

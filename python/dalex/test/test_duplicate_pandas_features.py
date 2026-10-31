@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 import dalex as dx
-from dalex._dataframe import shuffle_columns
+from dalex._dataframe import shuffle_columns, frame_from_values
 
 
 class NumericModel:
@@ -149,3 +149,68 @@ def test_duplicate_diagnostics_label_override_does_not_publish_the_view(case):
     assert (native.iloc[:, position].to_numpy() == 'custom').all()
     assert '_compatibility_result' not in value.__dict__
     pd.testing.assert_frame_equal(value.result, native)
+
+
+@pytest.mark.parametrize('case', ['strings', 'integers', 'missing', 'reserved', 'multiindex', 'reserved-multiindex'])
+@pytest.mark.parametrize('kind', ['regression', 'classification'])
+def test_fairness_backend_metadata_does_not_validate_feature_uniqueness(case, kind):
+    exp = fixture(case, kind)
+    renamed = exp.data.copy()
+    renamed.columns = ['a', 'b', 'c']
+    reference = dx.Explainer(exp.model, renamed, exp.y, model_type=kind, label='model', verbose=False)
+    protected = np.array(['u', 'v'] * 15)
+    actual = exp.model_fairness(protected, 'u')
+    expected = reference.model_fairness(protected, 'u')
+    pd.testing.assert_frame_equal(actual.result, expected.result, rtol=1e-12, atol=1e-12)
+    pd.testing.assert_frame_equal(pickle.loads(pickle.dumps(actual)).result, actual.result)
+
+
+@pytest.mark.parametrize('kind', ['regression', 'classification'])
+@pytest.mark.parametrize('discretize', [False, True])
+def test_lime_preserves_duplicate_model_columns_and_original_external_class(kind, discretize):
+    from lime.explanation import Explanation as LimeExplanation
+    exp = fixture('strings', kind)
+    renamed = exp.data.copy()
+    renamed.columns = ['a', 'b', 'c']
+    reference = dx.Explainer(exp.model, renamed, exp.y, model_type=kind, label='model', verbose=False)
+    options = dict(random_state=42, num_samples=128, num_features=3, discretize_continuous=discretize)
+    observation = exp.data.iloc[0].to_numpy()
+    actual = exp.predict_surrogate(observation, **options)
+    expected = reference.predict_surrogate(observation, **options)
+    assert type(actual) is LimeExplanation
+    assert isinstance(actual.result, pd.DataFrame)
+    np.testing.assert_allclose(actual.local_exp[1], expected.local_exp[1], rtol=1e-12, atol=1e-12)
+    assert np.isfinite(actual.result.effect).all()
+
+
+@pytest.mark.parametrize('case', ['strings', 'duplicate-multiindex', 'unique-multiindex'])
+@pytest.mark.parametrize('single', [False, True])
+def test_external_matrix_reconstruction_keeps_physical_columns_and_typed_cells(case, single):
+    reference = pd.DataFrame({
+        0: pd.Categorical(['b', 'a', 'b'], categories=['b', 'a', 'unused'], ordered=True),
+        1: pd.array([2**63+1, 2**63+3, 2**63+5], dtype='UInt64'),
+        2: pd.date_range('2020-01-01', periods=3, freq='ns', tz='UTC'),
+    }, index=[19, 71, 43])
+    if case == 'strings':
+        reference.columns = pd.Index(['x', 'x', 'when'], name='features')
+    else:
+        pairs = [('g', 1), ('g', 1 if case.startswith('duplicate') else 2), ('h', 1)]
+        reference.columns = pd.MultiIndex.from_tuples(pairs, names=['group', 'feature'])
+    positions = [1] if single else [1, 0]
+    matrix = reference.iloc[positions].to_numpy()
+    actual = frame_from_values(matrix[0] if single else matrix, reference)
+    assert isinstance(actual.index, pd.RangeIndex)
+    pd.testing.assert_index_equal(actual.columns, reference.columns, exact=True)
+    expected = reference.iloc[positions].reset_index(drop=True)
+    pd.testing.assert_series_equal(actual.iloc[:, 0], expected.iloc[:, 0])
+    assert actual.iloc[:, 1].tolist() == expected.iloc[:, 1].tolist()
+    pd.testing.assert_series_equal(actual.iloc[:, 2], expected.iloc[:, 2])
+
+
+def test_external_matrix_explicit_subset_retains_requested_order_and_categorical_dtype():
+    reference = pd.DataFrame({'kind': pd.Categorical(['b', 'a'], categories=['b', 'a', 'unused']),
+                              'x': [.5, 1.5], 'unused': [9., 7.]})
+    reference.columns.name = 'feature'
+    expected = reference.loc[:, ['x', 'kind']]
+    actual = frame_from_values(expected.to_numpy(), reference, columns=['x', 'kind'])
+    pd.testing.assert_frame_equal(actual, expected)

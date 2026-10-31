@@ -26,6 +26,14 @@ def indexed_residual(model, frame, target):
     return target - indexed_predict(model, frame)
 
 
+def matrix_predict(model, frame):
+    return model.predict(frame.to_numpy())
+
+
+def matrix_class_predict(model, frame):
+    return model.predict_proba(frame.to_numpy())[:, 1]
+
+
 def float32_loss(observed, predicted):
     import numpy as np
     return np.float32(np.mean((observed - predicted)**2))
@@ -136,8 +144,25 @@ def capture(root, labels_only=False):
         if case == 'strings':
             value = labeled.model_parts(N=16, B=3, random_state=42, processes=2)
             save('labels-duplicate-processes', (value.result, value.permutation))
+            lime_exp = dx.Explainer(model, frame.copy(), y, predict_function=matrix_predict,
+                                   model_type='regression', label='duplicate-lime', verbose=False)
+            save('labels-duplicate-lime', lime_exp.predict_surrogate(frame.iloc[0].to_numpy(),
+                 random_state=42, num_samples=128, num_features=3).result)
     if labels_only:
         return result
+    duplicate_frame = data.copy()
+    duplicate_frame.columns = ['x', 'x', 'z']
+    regression = dx.Explainer(model, duplicate_frame, y, predict_function=matrix_predict,
+                              model_type='regression', label='duplicate-fairness', verbose=False)
+    protected = np.array(['u', 'v'] * 16)
+    save('duplicate-regression-fairness', regression.model_fairness(protected, 'u').result)
+    from sklearn.linear_model import LogisticRegression
+    binary_y = (y > np.median(y)).astype(int)
+    binary_model = LogisticRegression(random_state=42).fit(data.to_numpy(), binary_y)
+    classification = dx.Explainer(binary_model, duplicate_frame, binary_y,
+        predict_function=matrix_class_predict, model_type='classification', label='duplicate-fairness', verbose=False)
+    fairness = classification.model_fairness(protected, 'u')
+    save('duplicate-classification-fairness', (fairness.result, fairness.metric_scores, fairness.parity_loss))
     for loss in [float32_loss, mixed_precision_loss, float32_missing_loss]:
         for kind in ['variable_importance', 'ratio', 'difference']:
             value = exp.model_parts(loss_function=loss, type=kind, N=16, B=7, random_state=42)

@@ -11,7 +11,7 @@ from . import checks
 from . import utils
 from . import helper
 from .. import _global_checks
-from .._dataframe import take_rows, as_numpy_vector
+from .._dataframe import take_rows, as_numpy_vector, native_namespace
 from .._explanation import set_result_column
 
 
@@ -919,8 +919,7 @@ class Explainer:
         - Steinberg, D., et al. (2020) https://arxiv.org/pdf/2001.06089.pdf
         """
 
-        import narwhals.stable.v2 as nw
-        backend = nw.get_native_namespace(nw.from_native(self.data, eager_only=True))
+        backend = native_namespace(self.data)
         predictions = self.y_hat if self.y_hat is not None else self.predict(self.data)
 
         if self.model_type == 'classification':

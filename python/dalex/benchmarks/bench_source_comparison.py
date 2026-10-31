@@ -57,7 +57,7 @@ def worker(args):
                 data = original.to_pandas() if args.backend == 'pandas' else original.clone()
                 converted = perf_counter()
                 exp = dx.Explainer(model, data, target, model_type='regression', label='model',
-                                   precalculate=False, verbose=False)
+                                   precalculate=args.precalculate, verbose=False)
                 initialized = perf_counter()
                 result = explain(exp, args.family, min(args.rows, args.sample), args.rounds)
                 finished = perf_counter()
@@ -90,6 +90,8 @@ def main():
     parser.add_argument('--sample', type=int, default=1000)
     parser.add_argument('--rounds', type=int, default=3)
     parser.add_argument('--trials', type=int, default=5)
+    parser.add_argument('--precalculate', action=argparse.BooleanOptionalAction, default=False,
+                        help='Include normal full-reference prediction/residual precalculation in initialization')
     parser.add_argument('--families', nargs='+', default=['importance', 'breakdown', 'shap', 'partial', 'conditional', 'accumulated'])
     parser.add_argument('--output', required=True)
     parser.add_argument('--worker-root')
@@ -145,6 +147,7 @@ def main():
                         '--family', family, '--model', args.model, '--model-file', str(model_file),
                         '--rows', str(args.rows), '--features', str(args.features), '--sample', str(args.sample),
                         '--rounds', str(args.rounds), '--output', str(temporary)]
+                    command.append('--precalculate' if args.precalculate else '--no-precalculate')
                     subprocess.run(command, check=True, env=dict(os.environ, PYTHONHASHSEED='0'),
                                    stdout=subprocess.DEVNULL)
                     item = json.loads(temporary.read_text(encoding='utf-8'))
